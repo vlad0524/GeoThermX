@@ -172,8 +172,7 @@
             ${c ? `<label class="rs-check"><input type="checkbox" id="fb-proj"><span>Attach a summary of my current project (<b>${esc(c.project.name)}</b>: state, building type, payback — no personal data)</span></label>` : ''}
             <label class="rs-check"><input type="checkbox" id="fb-ok" required><span>I agree to be contacted about GeoThermX. My details are used only for this.</span></label>
             <div class="rs-fb-err" id="fb-err" role="alert"></div>
-            <button class="btn btn-accent btn-lg" id="fb-send" type="submit">${mode === 'email' ? 'Send via email →' : 'Send →'}</button>
-            ${mode === 'off' ? '<div class="rs-off">The form is not connected yet. Site owner: add a Formspree form ID or a contact email in <code>assets/js/config.js</code>.</div>' : ''}
+            ${mode === 'off' ? '<div class="rs-soon"><b>Pilot sign-up opens soon.</b> The form will start accepting requests in the next few days — please check back.</div><button class="btn btn-accent btn-lg" type="button" disabled>Opening soon</button>' : `<button class="btn btn-accent btn-lg" id="fb-send" type="submit">${mode === 'email' ? 'Send via email →' : 'Send →'}</button>`}
           </form>
           <div class="rs-col2">
             <div class="card pad rs-why"><h3 class="card-title">What pilot users get</h3><ul class="rs-ul">
@@ -184,6 +183,7 @@
           </div>
         </div></div>`;
       const form = U.$('#fb-form', el), err = U.$('#fb-err', el), btn = U.$('#fb-send', el);
+      if (mode === 'off') { form.onsubmit = ev => ev.preventDefault(); form.querySelectorAll('input,select,textarea').forEach(x => { x.disabled = true; }); return; }
       form.onsubmit = async ev => {
         ev.preventDefault(); err.textContent = '';
         const v = id => (U.$('#' + id, el) || {}).value || '';
