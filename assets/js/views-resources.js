@@ -62,6 +62,7 @@
             <div class="rs-seg sm" role="group" aria-label="Metric">${Object.entries(METRICS).map(([k, v]) => `<button data-metric="${k}" class="${st.metric === k ? 'on' : ''}">${v.label}</button>`).join('')}</div>
           </div>
         </div>
+        <div class="rs-warn"><span class="rs-warn-i">i</span><div><b>Indicative estimates for a typical building — not a quote.</b> Each state uses one representative building, average energy prices and regional ground conditions. Your result depends on your building, utility rates, ground and incentives.</div><button class="btn btn-sm btn-primary" data-new-project="1">Get my exact numbers →</button></div>
         <div class="rs-body">
           <div class="card rs-mapcard"><div class="rs-sum" id="rs-sum"></div><div class="rs-grid" id="rs-grid"></div><div class="rs-legend" id="rs-legend"></div></div>
           <div class="rs-side"><div class="card pad rs-detail" id="rs-detail"></div><div class="card pad"><h3 class="card-title" id="rs-top-t">Best 10 states</h3><div class="rs-top" id="rs-top"></div></div></div>
@@ -106,7 +107,8 @@
           <div><span>Seasonal COP</span><b>${o.scop.toFixed(2)}</b></div>
         </div>
         <div class="muted" style="font-size:12px;margin:10px 0 14px">${esc(o.zone)} · ${esc(o.ground)} (k ${U.cond(o.k)})${o.inc > 0 ? ' · incentives ' + U.moneyK(o.inc) : ''}${o.avoided > 0 ? ' · avoided equipment ' + U.moneyK(o.avoided) : ''}</div>
-        <button class="btn btn-primary btn-block" id="rs-start">Start a project in ${esc(o.state)} →</button>`;
+        <button class="btn btn-primary btn-block" id="rs-start">Calculate for my building in ${esc(o.state)} →</button>
+        <div class="rs-hint">Typical-building estimate. Enter your building, current bills and site for a precise result (about 5 minutes).</div>`;
       U.$('#rs-start', el).onclick = () => { GX.track('map-start-project', o.code); GX.newProject(Object.assign({ locationId: 'st-' + o.code, baseline: st.base, name: `${KINDS[st.kind].label} — ${o.state}` }, KINDS[st.kind].p)); };
     }
   };
