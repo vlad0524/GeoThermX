@@ -9,6 +9,7 @@
     ['Project', [['projects', 'Projects'], ['dashboard', 'Overview']]],
     ['Feasibility study', [['site-intelligence', 'Site', 1], ['project-setup', 'Building & Loads', 2], ['system-design', 'Ground Loop', 3], ['costs', 'Costs & Incentives', 4], ['financial-analysis', 'Payback', 5], ['reports', 'Report', 6]]],
     ['After installation', [['monitoring', 'Operation']]],
+    ['Resources', [['us-map', 'US Payback Map'], ['methodology', 'Methodology & Data'], ['feedback', 'Feedback & Pilot']]],
     ['', [['preferences', 'Settings']]]
   ];
   /* Pages grouped under one sidebar item, shown as tabs at the top of the page */
@@ -22,6 +23,8 @@
   const stepHeader = id => { const s = STEP_OF[PARENT[id] || id]; return s ? { mode: 'step', step: s[0], label: s[1] } : null; };
   const REDIRECT = { benchmarking: 'dashboard', 'ai-assistant': 'dashboard' };
   GX.parentOf = id => PARENT[id] || id;
+  const NOPROJ = ['us-map', 'methodology', 'feedback'];   // work without a project (public layout)
+  const pubBar = id => `<div class="pub-bar"><a class="brand" href="#">GeoThermX</a><nav>${[['us-map', 'US Payback Map'], ['methodology', 'Methodology'], ['feedback', 'Feedback & Pilot']].map(([k, l]) => `<a href="#${k}" class="${k === id ? 'on' : ''}">${l}</a>`).join('')}</nav><button class="btn btn-primary btn-sm" data-new-project="1">Start a project</button></div>`;
   function subtabs(id) {
     const g = GROUPS[PARENT[id]]; if (!g) return '';
     return `<div class="subtabs" role="tablist">${g.map(([t, l]) => `<a href="#${t}" role="tab" aria-selected="${t === id}" class="${t === id ? 'on' : ''}">${l}</a>`).join('')}</div>`;
@@ -50,7 +53,7 @@
       }).join('') + '</div>').join('') +
       `</nav><div class="side-foot">
         <div class="units-sw" role="group" aria-label="Units"><button data-units="imperial" class="${U.imp() ? 'on' : ''}">US units</button><button data-units="metric" class="${!U.imp() ? 'on' : ''}">Metric</button></div>
-        <div style="margin-top:12px">GeoThermX v2.1 · Preliminary engineering estimates</div></div>`;
+        <div style="margin-top:12px">GeoThermX v2.2 · Preliminary engineering estimates</div></div>`;
   }
 
   function topbar(view) {
@@ -68,7 +71,6 @@
       center = `<span class="step-pill ${h.dark ? 'dark' : ''}">Step ${h.step} of 6: ${h.label}</span>`;
     } else {
       left = `<span class="tb-title">${U.esc(typeof h.title === 'function' ? h.title() : h.title)}</span>${demo}`;
-      if (h.online && GX.deployed() && GX.isSample()) center = `<span class="status-online"><span class="dot-live"></span>System Online</span>`;
     }
     return `<div class="tb-left"><button class="menu-btn" id="menu-btn" aria-label="Open menu">${U.icon.menu}</button>${left}</div><div class="tb-center">${center}</div><div class="tb-right">${right}</div>`;
   }
@@ -100,21 +102,29 @@
   function effective(id) {
     const v = GX.views[id];
     if (PUBLIC.includes(id)) return v;
-    if (GX.isLocked(id)) return { name: v.name, header: { mode: 'title', title: v.name }, render: el => { el.innerHTML = GX.lockedView(id); } };
     if (OPS.includes(id) && !GX.deployed()) return { name: v.name, header: v.header, render: el => { el.innerHTML = GX.notDeployed(id === 'monitoring' ? 'Monitoring starts after installation' : 'No operational alerts yet', `${U.esc(S.cur().project.name)} is in the <b>${GX.STAGES[GX.stage()][0]}</b> stage. ${id === 'monitoring' ? 'Live temperature, load and COP tracking' : 'Incident detection and root-cause analysis'} begin once the system is installed and sensors or the BMS are connected. Design-stage issues are listed in the Safety &amp; Compliance checklist (Drilling Optimization) and the Risk Engine.`); } };
     return v;
   }
-  const gateOf = id => [id, GX.isLocked(id), OPS.includes(id) && !GX.deployed(), S.state.settings.units, S.state.settings.plan].join('|');
+  const gateOf = id => [id, OPS.includes(id) && !GX.deployed(), S.state.settings.units, S.state.settings.plan].join('|');
 
   function route() {
+    if (U.tip) U.tip(null);   // never leave a tooltip from the previous page on screen
     let id = location.hash.slice(1);
     if (REDIRECT[id]) id = REDIRECT[id];
     if (!GX.views[id]) id = 'dashboard';
+    if (!S.cur() && NOPROJ.includes(id)) {
+      if (currentView && currentView.unmount) currentView.unmount();
+      currentId = id; currentView = GX.views[id]; gateKey = 'pub|' + id + '|' + S.state.settings.units;
+      document.body.classList.add('public'); U.$('#sidebar').innerHTML = ''; U.$('#topbar').innerHTML = ''; U.$('#introbar').innerHTML = ''; U.$('#footbar').hidden = true;
+      document.title = currentView.name + ' · GeoThermX'; const host = U.$('#view'); host.scrollTop = 0;
+      host.innerHTML = `<div class="view-inner pub-inner">${pubBar(id)}<div id="vroot"></div></div>`; currentView.render(U.$('#vroot')); U.animateNumbers(host, {}); U.bindTips(host);
+      if (GX.trackPage) GX.trackPage(id, currentView.name); return;
+    }
     if (!S.cur()) {
       if (currentView && currentView.unmount) currentView.unmount();
       currentId = 'welcome'; currentView = { name: 'Welcome', render(el) { el.innerHTML = GX.welcomeHtml(); this._off = GX.welcomeMount(el); }, unmount() { if (this._off) this._off(); } }; gateKey = 'welcome';
       document.body.classList.add('public'); U.$('#sidebar').innerHTML = ''; U.$('#topbar').innerHTML = ''; U.$('#introbar').innerHTML = ''; U.$('#footbar').hidden = true;
-      document.title = 'GeoThermX'; const host = U.$('#view'); host.innerHTML = `<div class="view-inner"><div id="vroot"></div></div>`; currentView.render(U.$('#vroot')); return;
+      document.title = 'GeoThermX'; const host = U.$('#view'); host.innerHTML = `<div class="view-inner"><div id="vroot"></div></div>`; currentView.render(U.$('#vroot')); if (GX.trackPage) GX.trackPage('welcome', 'Welcome'); return;
     }
     if (id === 'financial-analysis') S.mark('finance');
     const view = effective(id);
@@ -137,6 +147,7 @@
     U.animateNumbers(host, {});
     U.bindTips(host);
     if (view.mount) view.mount(vr);
+    if (GX.trackPage) GX.trackPage(id, view.name);
   }
 
   function repaint(reason) {
@@ -144,6 +155,7 @@
     if (!currentView) return;
     if (PUBLIC.includes(currentId)) return;
     if (!S.cur() || currentId === 'welcome') { route(); return; }
+    if (U.$('.pub-inner')) { route(); return; }
     if (reason === 'switch' || reason === 'reset' || reason === 'user' || reason === 'stage' || reason === 'projects' || gateOf(currentId) !== gateKey) { const keep = U.$('#view').scrollTop; route(); U.$('#view').scrollTop = keep; return; }
     U.$('#sidebar').innerHTML = sidebar();
     U.$('#topbar').innerHTML = topbar(currentView);
@@ -160,7 +172,7 @@
   document.addEventListener('click', e => {
     const g = e.target.closest('[data-go]');
     if (g) { e.preventDefault(); GX.go(g.dataset.go); return; }
-    const un = e.target.closest('[data-units]'); if (un) { S.setSettings({ units: un.dataset.units }); U.toast(un.dataset.units === 'imperial' ? 'US units: ft, ft², tons, °F, gpm' : 'Metric units: m, m², kW, °C, L/s'); return; }
+    const un = e.target.closest('[data-units]'); if (un) { S.setSettings({ units: un.dataset.units }); if (GX.track) GX.track('units-' + un.dataset.units); U.toast(un.dataset.units === 'imperial' ? 'US units: ft, ft², tons, °F, gpm' : 'Metric units: m, m², kW, °C, L/s'); return; }
     if (e.target.closest('#menu-btn')) { document.body.classList.toggle('nav-open'); return; }
     if (e.target.closest('#proj-btn')) { projectMenu(e.target.closest('#proj-btn')); return; }
     if (e.target.closest('#start-project')) { GX.newProject(); return; }

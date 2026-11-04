@@ -1,4 +1,4 @@
-# GeoThermX — Web Platform (v2.1)
+# GeoThermX — Web Platform (v2.2)
 
 Interactive engineering & analytics web app for geothermal (ground-source heat pump) projects,
 built from the GeoThermX UI design (14 screens) and the platform description / business plan.
@@ -6,6 +6,26 @@ built from the GeoThermX UI design (14 screens) and the platform description / b
 ## Run
 Open `index.html` in any modern browser (Chrome, Edge, Safari, Firefox). No build step, no server required.
 Optionally serve the folder: `python3 -m http.server` and open http://localhost:8000.
+
+## Switch on the feedback form and usage statistics (5 minutes, free, no server)
+Edit **assets/js/config.js** only:
+1. **Feedback / pilot form** — sign up at https://formspree.io → *New form* → copy the form ID (the part after `/f/`) into `formspreeId`.
+   Submissions arrive in your email and the Formspree dashboard. (Alternative: put an inbox in `contactEmail` — the form then opens the visitor's email app.)
+2. **Usage statistics** — sign up at https://www.goatcounter.com → choose a code (e.g. `geothermx`) → put it in `goatcounter`.
+   Counts page views and actions: project created, report generated, US map opened, sample loaded, form sent. No cookies, no personal data.
+3. Optional: in GoatCounter enable *Settings → Allow public access to the dashboard* and paste that link into `publicStatsUrl` — it appears on the Feedback page as independent, verifiable usage numbers.
+Commit config.js to GitHub; the live site updates in about a minute.
+
+## What's new in v2.2
+- **US Payback Map** (new): payback / savings / investment / CO₂ for a typical home, office or school in all 50 states + DC, for any current heating system. Animated tile map, ranking, state details, "Start a project in this state".
+- **Methodology & Data** (new): calculation steps, formulas, data sources, intended use and limits, model version.
+- **Feedback & Pilot** (new): working form (Formspree or email), usage-statistics card.
+- Map, Methodology and Feedback also work without a project (public pages, linked from the welcome screen).
+- **Honest samples**: three fictional buildings with real model results — office replacing an oil boiler (MA, operating, 12 months of example meter data), home on propane (MN), new school vs. natural gas (PA, marginal case).
+- Removed the simulated "live" monitoring feed and rule-based fake incidents: Operation and Alerts now use the same measured-data path for every project.
+- Model estimates labelled (risk probabilities, subsurface model).
+- Removed dead code: AI assistant, plan gating, benchmarking; removed company details from config.
+- Fixed: optimizer failed when the drilling depth limit was below 100 m (328 ft).
 
 ## What's new in v2.0 — restructured as a feasibility workflow
 Goal: for a building anywhere in the US, show whether a geothermal heat pump system pays off, how big it must be,

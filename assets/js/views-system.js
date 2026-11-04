@@ -1,144 +1,15 @@
-/* GeoThermX views: AI Assistant (Engineering Copilot), Reports (Documentation Hub), Settings */
+/* GeoThermX views: Report, Settings */
 (function () {
   'use strict';
   const U = window.GXUI, S = window.GXStore, E = window.GXEngine, A = window.GXAlerts;
   const GX = window.GX; const esc = U.esc;
-
-  /* ================= AI ASSISTANT ================= */
-  function optimizations() {
-    const c = S.cur(), r = S.result(), d = c.design, out = [];
-    const dd = Math.min(12, c.project.depthLimit - d.depth);
-    if (dd >= 5) { const w = GX.whatIf({ depth: d.depth + dd }); out.push({ id: 'depth', label: 'Optimize Borehole Layout', text: `Increase borehole circulation depth by ${dd}m to add loop length in the ${r.g.layer} (k = ${r.g.k} W/m·K).`, gain: w.SCOP / r.SCOP - 1, patch: { depth: d.depth + dd } }); }
-    else { const w = GX.whatIf({ spacing: d.spacing + 0.7 }); out.push({ id: 'spacing', label: 'Optimize Borehole Layout', text: `Widen borehole spacing to ${(d.spacing + 0.7).toFixed(1)}m to reduce thermal interference (depth is at the ${c.project.depthLimit} m limit).`, gain: w.SCOP / r.SCOP - 1, patch: { spacing: +(d.spacing + 0.7).toFixed(1) } }); }
-    if (!c.mitigation.rebalance) { const w = GX.whatIf(null, { rebalance: true }); out.push({ id: 'rebalance', label: 'Rebalance Seasonal Load', text: 'Rebalance seasonal load (e.g. supplemental heat rejection or extraction) so annual ground heat flows even out.', gain: w.SCOP / r.SCOP - 1, mit: { rebalance: true } }); }
-    if (d.flow > 1.0) { const w = GX.whatIf({ flow: 0.95 }); out.push({ id: 'flow', label: 'Reduce Pump Energy', text: `Trim circulation from ${d.flow.toFixed(2)} to 0.95 L/s per loop to cut pump power by ${((1 - w.pumpKw / r.pumpKw) * 100).toFixed(0)}%.`, gain: w.annualSavings / r.annualSavings - 1, patch: { flow: 0.95 } }); }
-    if (!c.mitigation.returnTemp) { const w = GX.whatIf(null, { returnTemp: 2 }); out.push({ id: 'valve', label: 'Reduce Peak Load Asymmetry', text: 'Reduce peak usage imbalance by raising the loop return temperature setpoint by 2°C.', gain: w.SCOP / r.SCOP - 1, mit: { returnTemp: 2 } }); }
-    return out.sort((a, b) => b.gain - a.gain).slice(0, 3);
-  }
-  function reply(q) {
-    const t = q.toLowerCase(); const r = S.result(), c = S.cur(), d = c.design;
-    const m = t.match(/(boreholes?|depth|spacing|flow|electricity|power price|gas)\D{0,12}?(\d+(?:\.\d+)?)/);
-    if (m) {
-      const v = parseFloat(m[2]); let dp = null, sp = null, label;
-      if (m[1].startsWith('borehole')) { dp = { n: Math.round(v) }; label = `${Math.round(v)} boreholes`; }
-      else if (m[1] === 'depth') { dp = { depth: Math.min(v, c.project.depthLimit) }; label = `${Math.min(v, c.project.depthLimit)} m depth`; }
-      else if (m[1] === 'spacing') { dp = { spacing: v }; label = `${v} m spacing`; }
-      else if (m[1] === 'flow') { dp = { flow: v }; label = `${v} L/s flow`; }
-      else if (m[1] === 'gas') { sp = { gas: v > 1 ? v / 100 : v }; label = `gas at $${(sp.gas).toFixed(3)}/kWh`; }
-      else { sp = { elec: v > 1 ? v / 100 : v }; label = `electricity at $${sp.elec.toFixed(3)}/kWh`; }
-      const w = GX.whatIf(dp, null, sp);
-      return { html: `With <b>${label}</b> the model projects:<ul><li>Seasonal COP <b>${w.SCOP.toFixed(2)}</b> (${U.signed((w.SCOP / r.SCOP - 1) * 100, 1, '%')})</li><li>CAPEX <b>${U.money(w.capex)}</b> (${U.signed((w.capex - r.capex) / 1000, 0, 'K')})</li><li>Annual savings <b>${U.money(w.annualSavings)}</b>, payback <b>${GX.pb(w.paybackYears)} yrs</b> (${U.signed((w.paybackYears - r.paybackYears) * 12, 0)} months)</li><li>Loop coverage <b>${(w.ratio * 100).toFixed(0)}%</b> of required length, risk score <b>${w.risk.score}</b></li></ul>`, apply: dp ? { patch: dp, label: 'Apply ' + label } : { settings: sp, label: 'Use ' + label } };
-    }
-    if (/(roi|payback|return|savings)/.test(t) && /(rebalanc|balanc)/.test(t)) {
-      const w = GX.whatIf(null, { rebalance: true });
-      return { html: `Applying the load rebalancing immediately will yield a <b>${((w.SCOP / r.SCOP - 1) * 100).toFixed(1)}% increase in COP</b>. This translates to an estimated <b>${U.money(w.annualSavings - r.annualSavings)} in annual energy savings</b>, reducing your total payback period by ${Math.max(0, Math.round((r.paybackYears - w.paybackYears) * 12))} months and lowering the aggregate risk score from ${r.risk.score} to ${w.risk.score}.`, apply: c.mitigation.rebalance ? null : { mit: { rebalance: true }, label: 'Apply load rebalancing' } };
-    }
-    if (/(improve|efficien|optimi[sz]|cop)/.test(t) && !/explain/.test(t)) {
-      const o = optimizations(); GX.views['ai-assistant'].state.recs = o.map(x => x.id);
-      return { html: `Based on the latest thermal simulation and real-time load data, I have identified ${o.length} key optimizations for this project:<ul class="arrows">${o.map(x => `<li><b>${esc(x.text)}</b> <span class="muted">(${U.signed(x.gain * 100, 1, '%')} ${x.id === 'flow' ? 'savings' : 'COP'})</span></li>`).join('')}</ul>Would you like me to run a simulation with these parameters?`, followSim: true };
-    }
-    if (/(risk|danger|fail|threat)/.test(t)) {
-      const k = GX.views['risk-engine'].model();
-      return { html: `Aggregate risk is <b>${r.risk.score}/100 (${r.risk.label})</b>. Top risks:<ul>${k.risks.map(x => `<li><b>${x.name}</b>: ${x.prob.toFixed(0)}% probability, horizon ${x.hz}</li>`).join('')}</ul>Without mitigation, seasonal COP is projected to fall from ${r.SCOP.toFixed(2)} to ${k.cop12.toFixed(2)} within 12 months. The mitigation plan (rebalancing, +2°C return temperature, pump trim) would cut the score to <b>${k.mitigated.risk.score}</b>.`, apply: k.applied ? null : { mit: { rebalance: true, returnTemp: 2, flowOpt: true }, label: 'Apply mitigation plan' } };
-    }
-    if (/(cost|capex|opex|cheaper|budget|reduce)/.test(t)) {
-      const sc = S.scenarios(); const ce = sc.list[2], best = sc.best;
-      return { html: `Current CAPEX is <b>${U.money(r.capex)}</b> (drilling ${U.money(r.drilling)}, heat pumps ${U.money(r.equipment)}, integration ${U.money(r.integration)}). Options to reduce it:<ul><li><b>${best.name}</b>: ${best.design.n} × ${best.design.depth} m at ${best.design.spacing} m spacing → CAPEX ${U.money(best.r.capex)}, payback ${GX.pb(best.r.paybackYears)} yrs.</li><li><b>${ce.name}</b>: CAPEX ${U.money(ce.r.capex)} but risk is ${ce.riskLabel.toLowerCase()} and COP drops to ${ce.r.SCOP.toFixed(2)}.</li><li>Pump trim to 0.95 L/s lowers annual OPEX by ${U.money(Math.max(0, GX.whatIf({ flow: 0.95 }).annualSavings - r.annualSavings))}.</li></ul>`, apply: { patch: { n: best.design.n, depth: best.design.depth, spacing: best.design.spacing, flow: best.design.flow }, label: 'Apply ' + best.name } };
-    }
-    if (/(co2|carbon|emission|climate)/.test(t)) return { html: `The system avoids <b>${U.n(r.co2Saved, 0)} t CO₂ per year</b>, a ${r.co2Pct.toFixed(0)}% cut in whole-building emissions, using a grid factor of ${r.loc.grid} kg/kWh for ${esc(r.loc.city)}. Over 20 years that is about ${U.n(r.co2Saved * 20, 0)} t.` };
-    if (/(explain|why|performance|how)/.test(t)) return { html: `Performance is driven by entering water temperature (EWT). In heating the loop delivers <b>${r.EWTh.toFixed(1)}°C</b> (COP ${r.COPh.toFixed(2)}); in cooling it returns <b>${r.EWTc.toFixed(1)}°C</b> (COP ${r.COPc.toFixed(2)}). Weighted by your ${U.n(c.project.heatDemand / 1000)} MWh heating and ${U.n(c.project.coolDemand / 1000)} MWh cooling demand, the seasonal COP is <b>${r.SCOP.toFixed(2)}</b>. The installed ${U.n(r.L, 0)} m loop covers ${(r.ratio * 100).toFixed(0)}% of the ${U.n(r.Lreq, 0)} m required. Because annual heat rejection exceeds extraction, ground temperature drifts ${U.signed(r.drift, 2, '°C')}/yr.` };
-    if (/(roi|payback|financ|money|profit|npv|irr)/.test(t)) return { html: `Net investment after incentives is <b>${U.money(r.netCapex)}</b>. Annual savings are <b>${U.money(r.annualSavings)}</b>, so payback is <b>${GX.pb(r.paybackYears)} years</b>. 10-year ROI is ${r.roi10.toFixed(0)}%, 20-year NPV ${U.money(r.npv20)} and IRR ${r.irr != null ? (r.irr * 100).toFixed(1) + '%' : 'n/a'}.` };
-    if (/^(yes|yep|sure|ok|run|simulate|go)/.test(t)) {
-      const sim = E.simulate(c.project, d, S.state.settings, Object.assign({}, c.mitigation, { rebalance: true, returnTemp: 2 }), Object.assign({}, c.sim));
-      return { html: `Ran a ${sim.years}-year simulation with the recommended changes: average COP <b>${sim.avgCop.toFixed(2)}</b>, minimum ${sim.minCop.toFixed(2)} in month ${sim.worstMonth + 1}, overload probability ${sim.overloadProb.toFixed(0)}%, degradation ${sim.degPerYr.toFixed(1)}%/yr. Open Simulation Lab for the full timeline.`, link: 'simulation-lab' };
-    }
-    return { html: 'I can analyze this project with live model data. Try asking:<ul><li>"How can I improve efficiency?"</li><li>"What is the ROI if I apply load rebalancing?"</li><li>"What if depth is 220?" or "Set boreholes to 50"</li><li>"Analyze current risks" or "How do I reduce cost?"</li></ul>' };
-  }
-
-  GX.views['ai-assistant'] = {
-    name: 'AI Assistant', header: { mode: 'title', title: () => GX.shortName() + ' — Engineering Copilot' },
-    state: { recs: null, picked: [] },
-    render(el) {
-      const c = S.cur();
-      if (!c.chat || !c.chat.length) {
-        if (GX.isSample()) {
-          c.chat = [{ who: 'u', text: 'How can I improve the overall system efficiency?' }];
-          c.chat.push(Object.assign({ who: 'a' }, reply(c.chat[0].text)));
-          c.chat.push({ who: 'u', text: 'What is the projected ROI if I apply the load rebalancing now?' });
-          c.chat.push(Object.assign({ who: 'a' }, reply(c.chat[2].text)));
-        } else {
-          c.chat = [{ who: 'a', html: `Hi! I answer from the live model of <b>${esc(GX.shortName())}</b> — every number comes from your current design and assumptions.<br>Try: <i>"How can I improve efficiency?"</i>, <i>"What if depth is 180?"</i>, <i>"Analyze current risks"</i> or <i>"How do I reduce cost?"</i>` }];
-        }
-      }
-      el.innerHTML = `<div class="ai-wrap">
-        <div class="ai-chat">
-          <div class="chips">${['Optimize system efficiency', 'Analyze current risks', 'Reduce operational cost', 'Explain performance'].map(x => `<button data-q="${x}">${x}</button>`).join('')}</div>
-          <div class="msgs" id="msgs" aria-live="polite"></div>
-          <div class="ai-meta"><span>Answers are computed from this project's engineering model. The assistant understands questions about efficiency, cost, payback, risk, CO₂ and what-if changes.</span></div><form class="ai-input" id="ai-form"><input class="input" id="ai-q" placeholder="Ask anything about your system parameters or risks..." autocomplete="off"><button class="btn btn-accent" type="submit">Send</button></form>
-        </div>
-        <div class="ai-side" id="ai-side"></div></div>`;
-      this.paintMsgs(el, false); this.usage(el);
-      el.querySelectorAll('[data-q]').forEach(b => b.onclick = () => this.ask(el, b.dataset.q));
-      U.$('#ai-form', el).onsubmit = e => { e.preventDefault(); const q = U.$('#ai-q', el).value.trim(); if (q) { U.$('#ai-q', el).value = ''; this.ask(el, q); } };
-      this.paint(el);
-    },
-    ask(el, q) {
-      const lim = GX.plan().ai;
-      if (S.state.aiUsage.count >= lim) { U.modal({ title: 'Monthly AI request limit reached', body: `<p style="margin:0">The ${GX.plan().name} plan includes ${lim} assistant requests per month. Upgrade for a higher limit.</p>`, actions: [{ label: 'Close', kind: 'ghost' }, { label: 'Compare plans', kind: 'primary', onClick: () => GX.go('preferences') }] }); return; }
-      S.useAi(); this.usage(el);
-      const c = S.cur(); c.chat.push({ who: 'u', text: q }); this.paintMsgs(el, false);
-      const box = U.$('#msgs', el); const typing = document.createElement('div'); typing.className = 'msg a typing'; typing.innerHTML = '<span></span><span></span><span></span>'; box.appendChild(typing); box.scrollTop = box.scrollHeight;
-      setTimeout(() => { typing.remove(); const a = Object.assign({ who: 'a' }, reply(q)); c.chat.push(a); c.chat = c.chat.slice(-40); S.persist(); this.paintMsgs(el, true); this.paint(el); }, 650 + Math.random() * 500);
-    },
-    usage(el) { const x = U.$('#ai-usage', el); if (!x) return; const lim = GX.plan().ai; x.textContent = `Requests this month: ${S.state.aiUsage.count}${lim === Infinity ? ' (unlimited)' : ' / ' + lim}`; },
-    paintMsgs(el, animateLast) {
-      const c = S.cur(), box = U.$('#msgs', el);
-      box.innerHTML = c.chat.map((m, i) => m.who === 'u' ? `<div class="msg u">${esc(m.text)}</div>` : `<div class="msg a ${animateLast && i === c.chat.length - 1 ? 'reveal' : ''}">${m.html}${m.apply ? `<div class="msg-act"><button class="btn btn-sm btn-accent" data-apply="${i}" data-edit>${esc(m.apply.label)}</button></div>` : ''}${m.followSim ? `<div class="msg-act"><button class="btn btn-sm btn-ghost" data-yes="1">Yes, run simulation</button></div>` : ''}${m.link ? `<div class="msg-act"><button class="btn btn-sm btn-ghost" data-go="${m.link}">Open Simulation Lab →</button></div>` : ''}</div>`).join('');
-      box.scrollTop = box.scrollHeight;
-      box.querySelectorAll('[data-apply]').forEach(b => b.onclick = () => {
-        if (!GX.guard()) return; const a = c.chat[+b.dataset.apply].apply;
-        if (a.patch) { if (S.cur().locked) { U.toast('Ground loop design is locked.', 'warn'); return; } S.setDesign(a.patch, 'ai'); }
-        if (a.mit) S.setMitigation(a.mit); if (a.settings) S.setSettings(a.settings);
-        S.log('AI Assistant: ' + a.label, 'Intelligence', 'Completed'); U.toast(esc(a.label) + ' — model updated'); b.textContent = 'Applied ✓'; b.disabled = true;
-      });
-      box.querySelectorAll('[data-yes]').forEach(b => b.onclick = () => this.ask(el, 'Yes, run the simulation'));
-    },
-    paint(el) {
-      const r = S.result(), c = S.cur();
-      const recs = optimizations(); const picked = this.state.picked;
-      const issues = A.list().filter(a => a.status !== 'resolved' && (a.sev === 'critical' || a.sev === 'warning')).slice(0, 3);
-      U.$('#ai-side', el).innerHTML = `
-        <div class="card pad"><h3 class="card-title">Current System Status</h3><div class="cs2">
-          <div class="between"><span class="muted">Efficiency (COP)</span><b class="teal">${U.count(r.SCOP, 'n2', 'ai-cop')}</b></div>
-          <div class="between"><span class="muted">Aggregate Risk</span><b style="color:${r.risk.score < 40 ? 'var(--green)' : r.risk.score < 72 ? 'var(--amber)' : 'var(--red)'}">${r.risk.label.replace(' Risk', '')} (${r.risk.score}%)</b></div>
-          <div class="between"><span class="muted">Status</span><b>${r.stability > 0.65 ? 'Optimal Operations' : 'Attention Needed'}</b></div></div></div>
-        <div class="card pad"><h3 class="card-title">Recommended Actions</h3><div class="ra">${recs.map(x => `<button class="ra-i ${picked.includes(x.id) ? 'on' : ''}" data-pick="${x.id}" data-tip="${esc(x.text)}<br>Impact: <b>${U.signed(x.gain * 100, 1, '%')}</b>"><span>${esc(x.label)}</span><span class="pl">${picked.includes(x.id) ? U.icon.check : U.icon.plus}</span></button>`).join('') || '<div class="empty-ok">All recommendations applied.</div>'}</div>
-          <div class="grid" style="grid-template-columns:1fr 1fr;gap:12px;margin-top:14px"><button class="btn btn-dark" id="ai-apply" data-edit ${recs.length ? '' : 'disabled'}>${picked.length ? 'Apply (' + picked.length + ')' : 'Apply All'}</button><button class="btn btn-ghost" data-go="simulation-lab">Run Sim</button></div></div>
-        <div class="card pad" style="flex:1"><h3 class="card-title">Active Context Data</h3>
-          <div class="ctx">${[GX.shortName(), r.loc.city, r.g.layer.replace(/^\w/, x => x.toUpperCase()), `${c.design.orient === 'vertical' ? 'Vertical' : 'Horizontal'} ${c.design.loop === 'open' ? 'Open' : 'Closed'}-Loop`].map(x => `<span>${esc(x)}</span>`).join('')}</div>
-          <h3 class="card-title" style="margin-top:22px">Active Issues</h3>
-          <div class="iss">${issues.length ? issues.map(a => `<button data-alert="${a.id}"><span class="dot" style="background:${a.sev === 'critical' ? 'var(--red)' : 'var(--amber)'}"></span>${esc(a.title)}</button>`).join('') : '<div class="muted" style="font-size:13px">No active issues.</div>'}</div>
-          <button class="btn btn-ghost btn-block" style="margin-top:18px" data-go="system-design">Adjust Configuration</button></div>`;
-      el.querySelectorAll('[data-pick]').forEach(b => b.onclick = () => { const id = b.dataset.pick; const i = picked.indexOf(id); if (i >= 0) picked.splice(i, 1); else picked.push(id); this.paint(el); U.bindTips(el); });
-      el.querySelectorAll('#ai-side [data-alert]').forEach(b => b.onclick = () => { GX.views.alerts.state.sel = b.dataset.alert; GX.go('alerts'); });
-      const ap = U.$('#ai-apply', el); if (ap) ap.onclick = () => {
-        if (!GX.guard()) return; const sel = recs.filter(x => !picked.length || picked.includes(x.id)); const before = S.result();
-        const patch = {}, mit = {}; sel.forEach(x => { Object.assign(patch, x.patch || {}); Object.assign(mit, x.mit || {}); });
-        if (Object.keys(patch).length) { if (S.cur().locked) { U.toast('Ground loop design is locked.', 'warn'); return; } S.setDesign(patch, 'ai'); }
-        if (Object.keys(mit).length) S.setMitigation(mit);
-        this.state.picked = []; const after = S.result();
-        S.log(`AI Assistant applied ${sel.length} recommendation(s)`, 'Intelligence', 'Completed');
-        const msg = `Applied ${sel.length} recommendation${sel.length > 1 ? 's' : ''}: COP ${before.SCOP.toFixed(2)} → <b>${after.SCOP.toFixed(2)}</b>, payback ${GX.pb(before.paybackYears)} → <b>${GX.pb(after.paybackYears)} yrs</b>.`;
-        c.chat.push({ who: 'a', html: msg }); S.persist(); this.paintMsgs(el, true); U.toast(msg);
-      };
-    }
-  };
 
   /* ================= REPORTS ================= */
   GX.views.reports = {
     name: 'Report', header: { mode: 'title', title: () => GX.shortName() + ' — Documentation Hub' },
     state: { sel: null, opts: { fin: true, risk: true, charts: true } },
     create(title, type) {
+      if (GX.track) GX.track('report-generated', type || 'report');
       const rep = { id: 'r' + Date.now(), title, date: U.today(), type };
       S.addReport(rep); this.state.sel = rep.id; S.log('Report generated: ' + title, 'Intelligence', 'Completed'); U.toast(`Report <b>${esc(title)}</b> generated`);
       return rep;

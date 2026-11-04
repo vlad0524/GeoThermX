@@ -1,102 +1,17 @@
-/* GeoThermX views: Monitoring, Alerts & Issues, Risk Engine, Benchmarking */
+/* GeoThermX views: Operation (measured data), Alerts, Risks */
 (function () {
   'use strict';
   const U = window.GXUI, S = window.GXStore, E = window.GXEngine, A = window.GXAlerts;
   const GX = window.GX; const esc = U.esc;
 
-  /* ================= MONITORING (live) ================= */
-  const live = { buf: null, key: null, uptime: 99.98, tick: 0, prevCop: null };
-  function seedLive(r) {
-    const key = JSON.stringify([S.state.current, r.SCOP.toFixed(3), r.EWTc.toFixed(2), S.cur().design.coolPeak]);
-    if (live.key === key && live.buf) return;
-    live.key = key; live.buf = { t: [], out: [], load: [], cop: [] };
-    for (let i = 0; i < 48; i++) pushLive(r, i);
-  }
-  function pushLive(r, i) {
-    const b = live.buf; const k = (live.tick++);
-    const base = S.cur().project.peakLoad * 0.88;
-    const load = base * (0.86 + 0.08 * Math.sin(k / 5) + 0.05 * Math.sin(k / 1.7) + (Math.random() - 0.5) * 0.05);
-    const cop = r.SCOP * (1.02 + 0.025 * Math.sin(k / 6 + 1) + (Math.random() - 0.5) * 0.012) * (1 - 0.04 * (load / base - 0.9));
-    const out = r.EWTc + 12.6 + 0.9 * Math.sin(k / 4) + 0.7 * Math.sin(k / 2.3) + (Math.random() - 0.5) * 0.4;
-    b.t.push(new Date(Date.now() - (47 - (i == null ? 47 : i)) * 1500)); b.load.push(load); b.cop.push(cop); b.out.push(out);
-    if (b.t.length > 48) { b.t.shift(); b.load.shift(); b.cop.shift(); b.out.shift(); }
-  }
-  const EVENTS = [[() => 'Loop pressure normalized (' + U.pres(2.1) + ')', 'Hardware', 'Success'], ['AI Routine: Load Forecast Refresh', 'Intelligence', 'Completed'], ['Heat pump HP-3 stage 2 engaged', 'System', 'Active'], ['Sensor node 412 heartbeat restored', 'Hardware', 'Success'], ['Flow balancing valve B-07 adjusted (-3%)', 'Hardware', 'Active'], [() => 'BMS setpoint sync (' + U.temp(22.5) + ')', 'System', 'Success']];
-
+  /* ================= OPERATION (measured monthly data, same path for every project) ================= */
   GX.views.monitoring = {
-    name: 'Operation', header: { mode: 'title', title: () => GX.shortName() + (GX.isSample() ? ' — Live Operations' : ' — Operations'), online: true, demo: true },
+    name: 'Operation', header: { mode: 'title', title: () => GX.shortName() + ' — Operation' },
     render(el) { el.innerHTML = '<div id="mon"></div>'; this.paint(el); },
-    mount(el) {
-      if (!GX.isSample()) return;
-      this.timer = setInterval(() => { const r = S.result(); pushLive(r); this.paintLive(el, true); }, 1500);
-      this.evTimer = setInterval(() => { const e = EVENTS[Math.floor(Math.random() * EVENTS.length)]; S.log(typeof e[0] === 'function' ? e[0]() : e[0], e[1], e[2]); this.paintLog(el); }, 9000);
-    },
-    unmount() { clearInterval(this.timer); clearInterval(this.evTimer); },
-    paint(el) {
-      if (!GX.isSample()) return GX.opsData.paint(el);
-      const r = S.result(); seedLive(r);
-      const alerts = A.list().filter(a => a.status !== 'resolved' && a.sev !== 'info').slice(0, 3);
-      const flowOpt = GX.whatIf({ flow: Math.min(0.95, S.cur().design.flow) });
-      U.$('#mon', el).innerHTML = `
-        ${!GX.plan().liveMonitoring ? '<div class="plan-note">Live analysis is part of the Enterprise plan. Showing the last recorded snapshot. <button class="link-btn" data-go="preferences">Compare plans</button></div>' : ''}
-        <div class="mon-kpis" id="mon-kpis"></div>
-        <div class="mon-grid">
-          <div class="mon-charts">
-            <div class="card pad mchart"><div class="between"><span class="mc-t">Live Temperature Profile</span><span class="mc-r teal num" id="mc-temp"></span></div><div class="mc-plot" id="mc-p1"></div></div>
-            <div class="card pad mchart"><div class="between"><span class="mc-t">Load Demand Tracking</span><span class="mc-r num" style="color:var(--ink-3)">Peak Load: ${U.pow(S.cur().project.peakLoad, 1)}</span></div><div class="mc-plot" id="mc-p2"></div></div>
-            <div class="card pad mchart"><div class="between"><span class="mc-t">Real-Time COP Efficiency</span><span class="mc-r teal num">Target: ${(r.SCOP * 0.98).toFixed(2)}</span></div><div class="mc-plot" id="mc-p3"></div></div>
-          </div>
-          <div class="mon-side">
-            <div class="card pad"><h3 class="card-title dark">Active Alerts</h3><div class="ma-list">${alerts.length ? alerts.map(a => `<button class="ma ${a.sev}" data-alert="${a.id}"><b>${esc(a.title)}</b><span>${a.time} — ${esc(a.area)}</span></button>`).join('') : '<div class="empty-ok">No active alerts.</div>'}
-              ${alerts.length < 3 ? '<button class="ma ok" data-go="alerts"><b>Scheduled Maintenance Sync</b><span>12:00:00 — Core Pump 1</span></button>' : ''}</div></div>
-            <div class="card pad"><h3 class="card-title teal">Insights</h3><div class="fi">
-              <div class="insight">✦ ${r.imbalance > 0.2 ? 'Temperature spike detected in the borefield core. Adjusting flow rate to compensate thermal expansion.' : 'Zone temperatures are balanced across all clusters.'}</div>
-              <div class="insight">✦ System is operating in the "${r.SCOP > 4.5 ? 'Ultra-High' : r.SCOP > 3.8 ? 'High' : 'Standard'} Efficiency" range. Estimated energy savings today: <span id="sav-today">${U.money(r.energySavings / 365)}</span>.${S.cur().design.flow > 1 ? ` Trimming flow to ${U.flow(0.95)} per loop would add ${U.money((flowOpt.annualSavings - r.annualSavings) / 365)}/day.` : ''}</div></div></div>
-          </div>
-        </div>
-        <div class="card pad mon-log"><h3 class="card-title dark">Activity Log</h3><div class="log-table" id="mon-log"></div></div>`;
-      el.querySelectorAll('[data-alert]').forEach(b => b.onclick = () => { GX.views.alerts.state.sel = b.dataset.alert; GX.go('alerts'); });
-      this.paintLive(el, false); this.paintLog(el);
-    },
-    paintLive(el, tick) {
-      const r = S.result(), b = live.buf; if (!b || !U.$('#mon-kpis', el)) return;
-      const n = b.cop.length, cop = b.cop[n - 1], load = b.load[n - 1];
-      const chg = (cop / r.SCOP - 1) * 100;
-      U.$('#mon-kpis', el).innerHTML = `
-        <div class="card kpi-sm"><div class="lbl">System Status</div><div class="val" style="color:var(--green)">${r.stability > 0.65 ? 'Optimal' : 'Degraded'}</div></div>
-        <div class="card kpi-sm"><div class="lbl">Efficiency (COP)</div><div class="val num">${cop.toFixed(2)} <small class="${chg >= 0 ? 'green' : 'red'}">${chg >= 0 ? '↑' : '↓'} ${Math.abs(chg).toFixed(1)}%</small></div></div>
-        <div class="card kpi-sm"><div class="lbl">Active Load</div><div class="val num">${U.n(U.powV(load), U.imp() ? 1 : 0)} <small style="color:var(--muted)">${U.powU()}</small></div></div>
-        <div class="card kpi-sm"><div class="lbl">Ground Temp</div><div class="val num">${U.temp(r.c.tg + (live.tick % 40 === 0 ? 0.1 : 0))} <small style="color:var(--muted);font-size:11px">STABLE</small></div></div>
-        <div class="card kpi-sm"><div class="lbl">Uptime</div><div class="val num">${live.uptime.toFixed(2)}%</div></div>`;
-      U.$('#mc-temp', el).textContent = `${U.temp(b.out[n - 1])} Out / ${U.temp(r.c.tg)} In`;
-      const draw = (id, arr, color, lo, hi, opts) => {
-        const W = 1000, H = 120; const mn = Math.min(...arr), mx = Math.max(...arr); const pad = (mx - mn) * (opts.pad || 1.2) + 1e-6;
-        const X = i => i / (arr.length - 1) * (W - 40), Y = U.scale(mn - pad, mx + pad, H - lo, hi);
-        const pts = arr.map((v, i) => [X(i), Y(v)]);
-        const d = opts.straight ? U.linePath(pts) : U.smooth(pts, 0.2);
-        const last = pts[pts.length - 1];
-        U.$(id, el).innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="chart" style="height:100%"><line x1="0" x2="${W}" y1="${H - 18}" y2="${H - 18}" stroke="#f1f5f9"/>${opts.target ? `<line x1="0" x2="${W}" y1="${Y(opts.target)}" y2="${Y(opts.target)}" stroke="#14b8a6" stroke-opacity=".25" stroke-dasharray="4 4"/>` : ''}<path d="${d}" fill="none" stroke="${color}" stroke-width="2.2" vector-effect="non-scaling-stroke"/><circle cx="${last[0]}" cy="${last[1]}" r="4" fill="${color}" class="live-dot"/></svg>`;
-        const svg = U.$(id + ' svg', el);
-        svg.addEventListener('mousemove', e => { const rc = svg.getBoundingClientRect(); const i = U.clamp(Math.round((e.clientX - rc.left) / rc.width * (W) / ((W - 40) / (arr.length - 1))), 0, arr.length - 1); U.tip(`${U.time(b.t[i])}<br><b>${opts.fmt(arr[i])}</b>`, e.clientX, e.clientY); });
-        svg.addEventListener('mouseleave', () => U.tip(null));
-      };
-      draw('#mc-p1', b.out, '#ef4444', 30, 14, { fmt: v => U.temp(v) + ' supply' });
-      draw('#mc-p2', b.load, '#0f172a', 30, 14, { straight: true, fmt: v => U.n(v, 0) + ' kW' });
-      draw('#mc-p3', b.cop, '#14b8a6', 30, 14, { pad: 2, target: r.SCOP * 0.98, fmt: v => 'COP ' + v.toFixed(2) });
-    },
-    paintLog(el) {
-      const L = S.logs().slice(0, 5); const box = U.$('#mon-log', el); if (!box) return;
-      const col = s => s === 'Success' || s === 'Completed' ? 'var(--green)' : s === 'Failed' ? 'var(--red)' : 'var(--ink)';
-      box.innerHTML = `<div class="lt-h"><span>Timestamp</span><span>Event Description</span><span>Category</span><span>Status</span></div>` + L.map((x, i) => `<div class="lt-r ${i === 0 ? 'new' : ''}"><span class="num">${U.stamp(x.t)}</span><span>${esc(x.msg)}</span><span>${esc(x.cat)}</span><span style="color:${col(x.status)}">${esc(x.status)}</span></div>`).join('');
-    },
-    foot: () => !GX.isSample() ? `<span class="spacer"></span><button class="btn btn-ghost" id="op-add" data-edit>Add month</button><button class="btn btn-ghost" id="op-up" data-edit>Upload CSV</button>${(S.cur().ops.rows || []).length ? '<button class="btn btn-ghost" id="op-exp">Export data</button><button class="btn btn-accent" id="mon-report">Generate Performance Report</button>' : '<button class="btn btn-ghost" id="op-tpl">CSV template</button>'}` : `<span class="spacer"></span><button class="btn btn-ghost" id="mon-adjust" data-edit>Adjust System Settings</button><button class="btn btn-ghost" id="mon-export">Export Real-Time Data</button><button class="btn btn-accent" id="mon-report">View Full Performance Report</button>`
+    paint(el) { return GX.opsData.paint(el); },
+    foot: () => `<span class="spacer"></span><button class="btn btn-ghost" id="op-add" data-edit>Add month</button><button class="btn btn-ghost" id="op-up" data-edit>Upload CSV</button>${(S.cur().ops.rows || []).length ? '<button class="btn btn-ghost" id="op-exp">Export data</button><button class="btn btn-accent" id="mon-report">Generate Performance Report</button>' : '<button class="btn btn-ghost" id="op-tpl">CSV template</button>'}`
   };
   document.addEventListener('click', e => {
-    if (e.target.closest('#mon-export')) {
-      const b = live.buf; if (!b) return;
-      const rows = [['timestamp', 'supply_temp_c', 'load_kw', 'cop']].concat(b.t.map((t, i) => [t.toISOString(), b.out[i].toFixed(2), b.load[i].toFixed(1), b.cop[i].toFixed(3)]));
-      U.exportData('Real-time data export', `${S.cur().project.ref}-live-${U.today()}.csv`, U.csv(rows), 'text/csv'); S.log('Exported real-time monitoring data', 'System', 'Success');
-    }
     if (e.target.closest('#mon-report')) { GX.views.reports.create('Operational Performance Report', 'MONITORING'); GX.go('reports'); }
     if (e.target.closest('#mon-adjust')) {
       if (!GX.guard()) return;
@@ -129,14 +44,14 @@
     paint(el) {
       const list = A.list(), cnt = A.counts(), f = this.state.filter;
       const shown = list.filter(a => f === 'all' ? true : f === 'critical' ? a.sev === 'critical' && a.status !== 'resolved' : f === 'warnings' ? a.sev === 'warning' && a.status !== 'resolved' : f === 'active' ? a.status !== 'resolved' && a.sev !== 'info' && a.sev !== 'scheduled' : a.status === 'resolved');
-      if (!list.length) { U.$('#al', el).innerHTML = `<div class="card empty-state"><div class="es-ico">✓</div><h2>No open alerts</h2><p class="muted">${GX.isSample() ? '' : (S.cur().ops.rows || []).length ? 'Measured performance in the latest months is within 10% of the design model.' : 'Alerts are generated from your monthly operating data. Upload data in Monitoring to start tracking deviations.'}</p><div class="row" style="justify-content:center"><button class="btn btn-accent" data-go="monitoring">Open Monitoring</button></div></div>`; return; }
+      if (!list.length) { U.$('#al', el).innerHTML = `<div class="card empty-state"><div class="es-ico">✓</div><h2>No open alerts</h2><p class="muted">${(S.cur().ops.rows || []).length ? 'Measured performance in the latest months is within 10% of the design model.' : 'Alerts are generated from your monthly operating data. Upload data in Monitoring to start tracking deviations.'}</p><div class="row" style="justify-content:center"><button class="btn btn-accent" data-go="monitoring">Open Monitoring</button></div></div>`; return; }
       if (!this.state.sel || !list.find(a => a.id === this.state.sel)) this.state.sel = (list.find(a => a.status !== 'resolved' && a.sev === 'critical') || list[0]).id;
       const sel = list.find(a => a.id === this.state.sel);
       const pill = a => { const m = { investigating: ['red', 'Investigating'], active: [a.sev === 'critical' ? 'red' : 'amber', 'Active'], resolved: ['green', 'Resolved'], info: ['gray', 'Info'], scheduled: ['gray', 'Scheduled'], assigned: ['blue', 'Assigned'] }[a.status] || ['gray', a.status]; return `<span class="pill ${m[0]}">${m[1]}</span>`; };
       const border = a => a.sev === 'critical' ? 'var(--red)' : a.sev === 'warning' ? 'var(--amber)' : 'var(--blue)';
       U.$('#al', el).innerHTML = `
         <div class="al-kpis">
-          ${(GX.isSample() ? [['critical', 'Critical Alerts', cnt.critical, 'red', cnt.critical ? '+1 New' : 'Clear', 'red'], ['warnings', 'Warnings', cnt.warnings, 'amber', 'Stable', 'muted'], ['active', 'Active Issues', cnt.active, '', '↓ -2 Resolved', 'green'], ['resolved', 'Resolved Today', cnt.resolved, 'green', 'Avg. 14 min', 'green']] : [['critical', 'Critical', cnt.critical, 'red', '', 'red'], ['warnings', 'Warnings', cnt.warnings, 'amber', '', 'muted'], ['active', 'Open', cnt.active, '', '', 'green'], ['resolved', 'Resolved', cnt.resolved, 'green', '', 'green']]).map(([k, l, v, c, sub, sc]) => `<button class="card kpi-sm al-k ${f === k ? 'on' : ''}" data-f="${k}"><div class="lbl">${l}</div><div class="val num"><span class="${c}" style="font-size:30px">${String(v).padStart(2, '0')}</span> <small class="${sc}" style="font-size:15px">${sub}</small></div></button>`).join('')}
+          ${([['critical', 'Critical', cnt.critical, 'red', '', 'red'], ['warnings', 'Warnings', cnt.warnings, 'amber', '', 'muted'], ['active', 'Open', cnt.active, '', '', 'green'], ['resolved', 'Resolved', cnt.resolved, 'green', '', 'green']]).map(([k, l, v, c, sub, sc]) => `<button class="card kpi-sm al-k ${f === k ? 'on' : ''}" data-f="${k}"><div class="lbl">${l}</div><div class="val num"><span class="${c}" style="font-size:30px">${String(v).padStart(2, '0')}</span> <small class="${sc}" style="font-size:15px">${sub}</small></div></button>`).join('')}
         </div>
         <div class="al-grid">
           <div class="al-list">${f !== 'all' ? `<div class="between" style="margin-bottom:-4px"><span class="muted" style="font-size:13px">Filtered: ${f} (${shown.length})</span><button class="link-btn" data-f="all">Show all</button></div>` : ''}
@@ -165,7 +80,7 @@
         const before = S.result(); setTimeout(() => { A.applyFix(sel.id); const after = S.result(); U.toast(`Recommended settings applied. COP ${before.SCOP.toFixed(2)} → <b>${after.SCOP.toFixed(2)}</b>, risk ${before.risk.score} → <b>${after.risk.score}</b>`); }, 900);
       };
     },
-    foot: () => { const c = A.counts(); if (!GX.isSample()) return `<span class="row" style="gap:28px;font-size:14px;font-weight:500;color:var(--ink-3);flex-wrap:wrap"><span class="row" style="gap:8px"><span class="dot" style="background:var(--red)"></span>${c.critical} critical</span><span class="row" style="gap:8px"><span class="dot" style="background:var(--amber)"></span>${c.warnings} warnings</span></span><span class="spacer"></span><button class="btn btn-ghost" data-go="monitoring">Operating data</button>`; return `<span class="row" style="gap:28px;font-size:14px;font-weight:500;color:var(--ink-3);flex-wrap:wrap"><span class="row" style="gap:8px"><span class="dot" style="background:var(--red)"></span>${c.critical} Critical Active</span><span class="row" style="gap:8px"><span class="dot" style="background:var(--amber)"></span>${c.warnings} Warnings Pending</span><span class="row" style="gap:8px"><span class="dot" style="background:var(--green)"></span>${c.resolved} Resolved Today</span></span><span class="spacer"></span><span class="note">Last System Scan: <span id="scan-clock" class="num">${U.time()}</span> (Live)</span>`; }
+    foot: () => { const c = A.counts(); return `<span class="row" style="gap:28px;font-size:14px;font-weight:500;color:var(--ink-3);flex-wrap:wrap"><span class="row" style="gap:8px"><span class="dot" style="background:var(--red)"></span>${c.critical} critical</span><span class="row" style="gap:8px"><span class="dot" style="background:var(--amber)"></span>${c.warnings} warnings</span></span><span class="spacer"></span><button class="btn btn-ghost" data-go="monitoring">Operating data</button>`; return `<span class="row" style="gap:28px;font-size:14px;font-weight:500;color:var(--ink-3);flex-wrap:wrap"><span class="row" style="gap:8px"><span class="dot" style="background:var(--red)"></span>${c.critical} Critical Active</span><span class="row" style="gap:8px"><span class="dot" style="background:var(--amber)"></span>${c.warnings} Warnings Pending</span><span class="row" style="gap:8px"><span class="dot" style="background:var(--green)"></span>${c.resolved} Resolved Today</span></span><span class="spacer"></span><span class="note">Last System Scan: <span id="scan-clock" class="num">${U.time()}</span> (Live)</span>`; }
   };
 
   /* ================= RISK ENGINE ================= */
@@ -212,7 +127,7 @@
           <p class="muted">${k.P.imbalance > 0.3 ? `Current geothermal load analysis indicates a seasonal thermal imbalance in the borefield. Without load rebalancing, the system efficiency is projected to drop below the ${thr}% stability threshold by ${qtr}.` : `Thermal field is within tolerance. The main residual exposure is ${k.risks[0].name.toLowerCase()} (${k.risks[0].prob.toFixed(0)}% probability).`}</p></div>
         </div>
         <div class="rk-grid">
-          <div><h3 class="card-title ink3 rk-h">Priority Risks (Top 3)</h3>
+          <div><h3 class="card-title ink3 rk-h">Priority Risks (Top 3) <span class="est-tag" title="Probabilities and horizons are estimated by the model from the current design — not measured data.">model estimate</span></h3>
             <div class="pr-list">${k.risks.map((x, i) => `<div class="card pr" style="--bc:${i === 0 && x.prob > 60 ? 'var(--red)' : 'var(--amber)'}"><b>${x.name}</b><div class="between"><span class="muted">Prob: <span style="color:${i === 0 && x.prob > 60 ? 'var(--red)' : 'inherit'};font-weight:${i === 0 ? 700 : 500}">${x.prob.toFixed(0)}%</span></span><span class="muted">Horizon: ${x.hz}</span></div><div class="progress"><i style="width:${x.prob}%;background:${i === 0 && x.prob > 60 ? 'var(--red)' : 'var(--amber)'}"></i></div></div>`).join('')}</div></div>
           <div>
             <div class="card pad rk-path"><h3 class="card-title ink3">Risk Evolution Pathway</h3>
@@ -244,75 +159,6 @@
     }
   });
 
-  /* ================= BENCHMARKING ================= */
-  GX.views.benchmarking = {
-    name: 'Benchmarking', header: { mode: 'title', title: 'Industry Benchmarking — North America Region', demo: 'always', demoText: 'Sample dataset' },
-    render(el) { el.innerHTML = '<div id="bm"></div>'; this.paint(el); },
-    paint(el) {
-      const r = S.result(), p = S.cur().project, b = E.benchmark(r, p), B = b.B;
-      const bar = (label, v, max, color, txt, i) => `<div class="bm-row"><span>${label}</span><div class="bm-track"><i style="width:${U.clamp(v / max * 100, 2, 100)}%;background:${color};animation-delay:${i * 80}ms" class="bm-fill"></i></div><b class="num">${txt}</b></div>`;
-      const costMax = Math.max(b.costSqft, B.avgCost, B.topCost) * 1.25, copMax = 5.2, outMax = Math.max(r.annualOutput, B.topOut) * 1.1;
-      const prevScore = this._prev != null ? this._prev : b.score - 8.4 * b.score / 100;
-      this._prev = b.score;
-      U.$('#bm', el).innerHTML = `
-        <div class="al-kpis">
-          <div class="card kpi-sm"><div class="lbl">Your Project Score</div><div class="val">${U.count(b.score, 'n1', 'bm-s')} <small class="green">↑ ${(Math.abs(b.score - prevScore) / prevScore * 100 || 8.4).toFixed(1)}%</small></div></div>
-          <div class="card kpi-sm"><div class="lbl">Industry Average</div><div class="val">${B.avgScore.toFixed(1)} <small class="muted">Baseline</small></div></div>
-          <div class="card kpi-sm"><div class="lbl">Top Performer Score</div><div class="val">${B.topScore.toFixed(1)} <small class="gold">Gold Tier</small></div></div>
-          <div class="card kpi-sm"><div class="lbl">Efficiency Rank</div><div class="val">#${U.count(b.rank, 'n0', 'bm-r')} <small class="muted">of ${B.peers} projects</small></div></div>
-        </div>
-        <div class="bm-grid">
-          <div class="bm-l">
-            <div class="card pad bm-card"><div class="between"><span class="bm-t">Efficiency (COP) Comparison</span><span class="teal b" style="font-size:13px">Target: 5.0</span></div>
-              ${bar('Your Project', r.SCOP, copMax, 'var(--teal-500)', r.SCOP.toFixed(2), 0)}${bar('Industry Avg.', B.avgCop, copMax, '#cbd5e1', B.avgCop.toFixed(2), 1)}${bar('Top Tier', B.topCop, copMax, 'var(--gold)', B.topCop.toFixed(2), 2)}</div>
-            <div class="card pad bm-card"><div class="between"><span class="bm-t">Installation Cost ($/sq.ft)</span><span class="b" style="font-size:13px;color:${b.costSqft > B.avgCost ? 'var(--ink-3)' : 'var(--green)'}">${b.costSqft > B.avgCost ? 'Above Average' : 'Below Average'}</span></div>
-              ${bar('Your Project', b.costSqft, costMax, 'var(--teal-500)', '$' + b.costSqft.toFixed(2), 0)}${bar('Industry Avg.', B.avgCost, costMax, '#cbd5e1', '$' + B.avgCost.toFixed(2), 1)}${bar('Top Tier', B.topCost, costMax, 'var(--gold)', '$' + B.topCost.toFixed(2), 2)}</div>
-            <div class="card pad bm-card"><div class="between"><span class="bm-t">Annual Energy Output (MWh)</span><span class="b" style="font-size:13px;color:${r.annualOutput >= B.avgOut ? 'var(--green)' : 'var(--amber)'}">${r.annualOutput >= B.avgOut ? 'Optimal Range' : 'Below Average'}</span></div>
-              ${bar('Your Project', r.annualOutput, outMax, 'var(--teal-500)', U.n(r.annualOutput, 0), 0)}${bar('Industry Avg.', B.avgOut, outMax, '#cbd5e1', U.n(B.avgOut, 0), 1)}${bar('Top Tier', B.topOut, outMax, 'var(--gold)', U.n(B.topOut, 0), 2)}</div>
-          </div>
-          <div class="bm-r">
-            <div class="card pad"><h3 class="card-title ink3">Performance Insights</h3><div class="fi">
-              <div class="insight">✦ Your system efficiency is ${Math.abs(b.effVsAvg).toFixed(0)}% ${b.effVsAvg >= 0 ? 'higher' : 'lower'} than industry average${b.effVsAvg >= 0 ? ' due to AI-driven drilling optimization' : ''}.</div>
-              <div class="insight">✦ Initial installation costs are ${b.costSqft <= B.topCost ? 'in the top 10th percentile' : b.costSqft <= B.avgCost ? 'below the regional average' : 'above the regional average'}; ROI is ${r.roi10 > 0 ? 'justified by energy gains' : 'not yet positive over 10 years'}.</div></div></div>
-            <div class="card pad" style="flex:1"><h3 class="card-title ink3">Market Opportunities</h3><div class="opp">
-              <button data-go="drilling-optimization"><span class="n">1</span>Optimize Drilling Depth<span class="go">→</span></button>
-              <button id="bm-hvac"><span class="n">2</span>Streamline HVAC Sync<span class="go">→</span></button>
-              <button data-go="financial-analysis"><span class="n">3</span>Federal Grant Eligibility<span class="go">→</span></button></div>
-              <div class="muted" style="font-size:11.5px;margin-top:18px;line-height:1.5">Benchmarks use an illustrative regional sample of ${B.peers} commercial geothermal projects.</div></div>
-          </div>
-        </div>
-        <div class="card pad bm-pos"><div class="between"><h3 style="margin:0;font-size:17px">Competitive Positioning</h3><div class="row" style="gap:40px"><span class="teal b" style="font-size:14px">Your Project (Top ${b.topPct}%)</span><span class="teal bb" style="font-size:24px">Top ${b.topPct}%</span></div></div>
-          <div class="pos-bar"><i style="width:${100 - b.topPct}%"></i><em style="left:${100 - b.topPct}%"></em></div></div>`;
-      const hv = U.$('#bm-hvac', el); if (hv) hv.onclick = () => { GX.go('monitoring'); setTimeout(() => { const x = document.getElementById('mon-adjust'); if (x) x.click(); }, 350); };
-    },
-    foot: () => `<span class="spacer"></span><button class="btn btn-ghost" id="bm-export">Export Benchmark Data</button><button class="btn btn-ghost" id="bm-peers">View Global Peer List</button><button class="btn btn-accent" id="bm-opt" data-edit>Optimize Project Configuration</button>`
-  };
-  function peers() {
-    const r = S.result(), p = S.cur().project, b = E.benchmark(r, p);
-    const names = ['Harborview Tower', 'Cedar Ridge Campus', 'Northgate Medical', 'Riverbend Lofts', 'Summit Office Park', 'Lakeshore Library', 'Pinecrest School', 'Granite Point HQ', 'Willow Creek Senior Living', 'Bayside Logistics', 'Maple Commons', 'Ironwood Labs', 'Elm Street Civic', 'Brookfield Arena'];
-    const rows = names.map((n, i) => { const sc = 97.5 - i * 1.6 - (i * 37 % 7) * 0.3; return { n, sc, cop: 4.95 - i * 0.07, city: E.LOCATIONS[i % E.LOCATIONS.length].city }; });
-    rows.push({ n: p.name + ' (you)', sc: b.score, cop: r.SCOP, city: r.loc.city, you: true });
-    rows.sort((a, c) => c.sc - a.sc);
-    return { rows, b };
-  }
-  document.addEventListener('click', e => {
-    if (e.target.closest('#bm-peers')) {
-      const { rows, b } = peers();
-      U.modal({ title: 'Global peer list', wide: true, body: `<div class="muted" style="font-size:12.5px">Illustrative sample of top-ranked projects. Your project ranks #${b.rank} of ${b.B.peers}.</div><div class="peer-t"><div class="lt-h"><span>#</span><span>Project</span><span>Region</span><span>COP</span><span>Score</span></div>${rows.map((x, i) => `<div class="lt-r ${x.you ? 'you' : ''}"><span>${x.you ? b.rank : i + 1 - (rows.slice(0, i).some(y => y.you) ? 1 : 0)}</span><span>${esc(x.n)}</span><span>${esc(x.city)}</span><span>${x.cop.toFixed(2)}</span><span><b>${x.sc.toFixed(1)}</b></span></div>`).join('')}</div>` });
-    }
-    if (e.target.closest('#bm-export')) {
-      const r = S.result(), b = E.benchmark(r, S.cur().project), B = b.B;
-      const rows = [['Metric', 'Your project', 'Industry avg', 'Top tier'], ['Score', b.score.toFixed(1), B.avgScore, B.topScore], ['Seasonal COP', r.SCOP.toFixed(2), B.avgCop, B.topCop], ['Installation cost ($/sq.ft)', b.costSqft.toFixed(2), B.avgCost, B.topCost], ['Annual output (MWh)', r.annualOutput.toFixed(0), B.avgOut, B.topOut], ['Rank', b.rank, '', B.peers]];
-      U.exportData('Benchmark data', `${S.cur().project.ref}-benchmark.csv`, U.csv(rows), 'text/csv');
-    }
-    if (e.target.closest('#bm-opt')) {
-      if (!GX.guard()) return; if (S.cur().locked) { U.toast('Ground loop design is locked. Unlock it first.', 'warn'); return; }
-      const before = E.benchmark(S.result(), S.cur().project).score; const best = S.scenarios().best;
-      S.setDesign({ n: best.design.n, depth: best.design.depth, spacing: best.design.spacing, flow: best.design.flow }); S.setMitigation({ rebalance: true });
-      const after = E.benchmark(S.result(), S.cur().project).score; S.log(`Benchmark optimization applied (${best.name})`, 'Intelligence', 'Completed');
-      U.toast(`Configuration optimized: score ${before.toFixed(1)} → <b>${after.toFixed(1)}</b>`);
-    }
-  });
 })();
 
 /* ===== Operating data (real monitoring from user-uploaded monthly data) ===== */

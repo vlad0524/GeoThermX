@@ -422,9 +422,10 @@
       return { obj: r.capex - pv + r.risk.score * 900, design: d, result: r };
     };
     let best = null;
-    for (let sp = 5; sp <= 8.01; sp += 0.5) for (let dep = 100; dep <= maxDepth; dep += 20) { const c = evalAt(sp, dep); if (!best || c.obj < best.obj) best = c; }
+    const dep0 = Math.max(30, Math.min(100, maxDepth));   // shallow sites (depth limit under 100 m) are still searched
+    for (let sp = 5; sp <= 8.01; sp += 0.5) for (let dep = dep0; dep <= maxDepth; dep += dep0 < 100 ? 10 : 20) { const c = evalAt(sp, dep); if (!best || c.obj < best.obj) best = c; }
     const s0 = best.design.spacing, d0 = best.design.depth;
-    for (let sp = Math.max(5, s0 - 0.4); sp <= Math.min(8, s0 + 0.4) + 1e-9; sp += 0.1) for (let dep = Math.max(60, d0 - 20); dep <= Math.min(maxDepth, d0 + 20); dep += 10) { const c = evalAt(sp, dep); if (c.obj < best.obj) best = c; }
+    for (let sp = Math.max(5, s0 - 0.4); sp <= Math.min(8, s0 + 0.4) + 1e-9; sp += 0.1) for (let dep = Math.max(Math.min(60, dep0), d0 - 20); dep <= Math.min(maxDepth, d0 + 20); dep += 10) { const c = evalAt(sp, dep); if (c.obj < best.obj) best = c; }
     if (optMemo.size > 60) optMemo.clear();
     optMemo.set(key, best);
     return best;

@@ -48,26 +48,9 @@
   U.loopRange = () => imp() ? '130–250 ft/ton' : '11–22 m/kW';
   U.loopOk = r => r.ftPerTon >= 130 && r.ftPerTon <= 250;
 
-  /* ---------- Plans & limits (from the platform description) ---------- */
-  GX.PLANS = {
-    basic: { name: 'Basic', price: 'Starter', projects: 3, ai: 100, users: 1, locked: ['drilling-optimization', 'simulation-lab', 'scenario-comparison', 'monitoring', 'alerts', 'risk-engine', 'benchmarking'], liveMonitoring: false,
-      features: ['Basic Site Intelligence & suitability score', 'Simplified system design', 'Preliminary financial analysis', 'AI Assistant (100 requests / month)', 'Basic reports'], limits: ['Up to 3 active projects', 'Single user'] },
-    professional: { name: 'Professional', price: 'Most popular', projects: 15, ai: 500, users: 5, locked: ['alerts', 'risk-engine'], liveMonitoring: false,
-      features: ['Everything in Basic', 'Drilling Optimization Engine', 'Simulation Lab & Scenario Comparison', 'Advanced financial analytics', 'Benchmarking', 'Enhanced AI Assistant (500 / month)', 'Advanced reports'], limits: ['Up to 15 active projects', 'Up to 5 users', 'Monitoring without live analysis'] },
-    enterprise: { name: 'Enterprise', price: 'Custom', projects: Infinity, ai: Infinity, users: Infinity, locked: [], liveMonitoring: true,
-      features: ['Everything in Professional', 'Full Risk Engine & predictive analytics', 'Real-time monitoring with sensor integration', 'Alerts & incident management', 'Engineering Copilot (unlimited)', 'API & integrations'], limits: ['Unlimited projects and users'] }
-  };
-  GX.plan = () => GX.PLANS.enterprise;
+  /* ---------- Workspace (no plan gating) ---------- */
+  GX.plan = () => ({ name: 'Workspace', projects: Infinity, liveMonitoring: true });
   GX.isLocked = () => false;
-  GX.minPlanFor = id => ['basic', 'professional', 'enterprise'].find(k => !GX.PLANS[k].locked.includes(id));
-
-  /* ---------- Roadmap phases (business plan 3.3–3.5, 7.3) ---------- */
-  GX.PHASE = {
-    dashboard: 'MVP', 'site-intelligence': 'MVP', 'project-setup': 'MVP', 'system-design': 'MVP', 'financial-analysis': 'MVP', reports: 'MVP', projects: 'MVP', preferences: 'MVP',
-    'scenario-comparison': 'P2', 'ai-assistant': 'P2', benchmarking: 'P2',
-    'drilling-optimization': 'P3', 'simulation-lab': 'P3', monitoring: 'P3', alerts: 'P3', 'risk-engine': 'P3'
-  };
-  GX.PHASE_LABEL = { MVP: 'MVP · Year 1', P2: 'Release 2 · Year 2', P3: 'Release 3 · Years 3–5' };
 
   /* ---------- Lifecycle ---------- */
   GX.STAGES = { assessment: ['Assessment', 'amber'], design: ['Design', 'blue'], deployed: ['Operational', 'green'] };
@@ -75,14 +58,14 @@
   GX.deployed = () => GX.stage() === 'deployed';
   GX.isSample = () => !!(S.cur() && S.cur().project.sample);
   GX.stagePill = st => { const s = GX.STAGES[st || GX.stage()]; return `<span class="pill ${s[1]}" style="text-transform:none">${s[0]}</span>`; };
-  GX.demoTag = (txt) => !GX.isSample() ? '' : `<span class="demo-tag" title="Simulated data for demonstration. Connect sensors/BMS for live values.">${txt || 'Demo data'}</span>`;
+  GX.demoTag = (txt) => !GX.isSample() ? '' : `<span class="demo-tag" title="Sample project with example operating data.">${txt || 'Sample data'}</span>`;
 
   GX.notDeployed = (title, text) => `<div class="card empty-state">
       <div class="es-ico">⏻</div><h2>${title}</h2><p class="muted">${text}</p>
       <div class="row" style="gap:12px;justify-content:center;flex-wrap:wrap;margin-top:8px">
         <button class="btn btn-ghost" data-go="financial-analysis">Review financials</button>
         <button class="btn btn-accent" id="es-deploy" data-edit>Mark system as installed</button>
-        ${S.state.projects.sample ? '' : '<button class="btn btn-ghost" data-load-sample="1">Explore the sample project</button>'}</div>
+        ${S.state.projects.sample ? '' : '<button class="btn btn-ghost" data-load-sample="1">Load sample projects</button>'}</div>
       <div class="muted" style="font-size:12px;margin-top:16px">Current stage: ${GX.stagePill()}</div></div>`;
   GX.deploy = () => {
     if (!GX.guard()) return;
@@ -91,17 +74,12 @@
   };
   document.addEventListener('click', e => {
     if (e.target.closest('#es-deploy')) GX.deploy();
-    const d = e.target.closest('[data-load-sample]'); if (d) { S.loadSample(); U.toast('Sample project opened. Your own projects are unchanged.'); GX.go('dashboard'); }
+    const d = e.target.closest('[data-load-sample]'); if (d) { S.loadSample(); if (GX.track) GX.track('samples-loaded'); U.toast('3 sample projects added: office, home and school. Your own projects are unchanged.'); GX.go('dashboard'); }
     const i = e.target.closest('[data-explain]'); if (i) { e.preventDefault(); e.stopPropagation(); GX.explain(i.dataset.explain); }
     const up = e.target.closest('[data-upgrade]'); if (up) GX.go('preferences');
   });
 
-  GX.lockedView = id => {
-    const need = GX.PLANS[GX.minPlanFor(id)];
-    return `<div class="card empty-state"><div class="es-ico">🔒</div><h2>${(GX.views[id] && GX.views[id].name) || 'Module'} is available on ${need.name}</h2>
-      <p class="muted">Your workspace is on the <b>${GX.plan().name}</b> plan. Upgrade to unlock this module for all projects.</p>
-      <div class="row" style="gap:12px;justify-content:center"><button class="btn btn-accent" data-go="preferences">Change plan in Settings</button></div></div>`;
-  };
+
 
   /* ---------- Methodology: "How is this calculated?" ---------- */
   GX.pb = y => (!isFinite(y) || y >= 25) ? 'over 25' : (+y).toFixed(1);
@@ -178,6 +156,9 @@
     'drilling-optimization': ['Step 3 of 6 · Ground Loop — find the drilling plan with the lowest lifecycle cost and review the safety & permit checklist.', 'simulation-lab', 'Long-term simulation'],
     'simulation-lab': ['Step 3 of 6 · Ground Loop — test the design under extreme weather and load growth over 1, 5 or 10 years.', 'risk-engine', 'Risks'],
     'risk-engine': ['Step 3 of 6 · Ground Loop — long-term performance risks (ground heat build-up, overload, freezing) and how to reduce them.', 'costs', 'Costs & Incentives'],
+    'us-map': ['Payback for a typical home, office or school in every state, from the same engine. Click a state for details or start a project there.', null, null],
+    methodology: ['How every number is calculated, where the data comes from, and what the tool is (and is not) for.', null, null],
+    feedback: ['Join the pilot program or send feedback — it goes straight to the GeoThermX team.', null, null],
     costs: ['Step 4 of 6 · Check energy prices, installed cost and incentives. Defaults come from the state and sector; enter real tariffs if you have them.', 'financial-analysis', 'Payback'],
     'financial-analysis': ['Step 5 of 6 · Payback, savings, NPV and IRR against the current heating & cooling system.', 'scenario-comparison', 'Compare options'],
     'scenario-comparison': ['Step 5 of 6 · Compare standard, optimized and low-cost designs and apply the best one.', 'reports', 'Report'],
@@ -262,7 +243,8 @@
           <div class="wl-kicker">Geothermal engineering platform</div>
           <h1>Design a ground-source heat pump system <em>from site to payback</em></h1>
           <p>Pick any US state, describe the building and its current heating &amp; cooling. GeoThermX calculates the loads, sizes the borefield, prices it with state energy rates and incentives, and shows when the system pays back — then writes the feasibility report.</p>
-          <div class="wl-cta"><button class="btn btn-accent btn-lg" data-new-project="1">Create your first project →</button><button class="btn btn-lg wl-ghost" data-load-sample="1">Explore a sample project</button></div>
+          <div class="wl-cta"><button class="btn btn-accent btn-lg" data-new-project="1">Create your first project →</button><button class="btn btn-lg wl-ghost" data-load-sample="1">Explore sample projects</button></div>
+          <div class="wl-links"><a href="#us-map"><span class="wl-li">◎</span>US payback map — all 50 states</a><a href="#methodology"><span class="wl-li">∑</span>Methodology &amp; data</a><a href="#feedback"><span class="wl-li">✉</span>Join the pilot</a></div>
           <ol class="wl-steps">${steps.map((s, i) => `<li style="--i:${i}"><span>${i + 1}</span><div><b>${s[0]}</b><em>${s[1]}</em></div></li>`).join('')}</ol>
           <p class="wl-note">Preliminary engineering estimates. They do not replace licensed design or permitting.</p>
         </div>

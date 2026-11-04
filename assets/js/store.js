@@ -6,11 +6,11 @@
 
   function defaultProject(id, over) {
     const base = {
-      id, name: 'Aurora District Phase 1', ref: 'GT-9920', locationId: 'st-WA', city: 'Seattle, WA', zone: '4C', ground: 'Silty Sand / Gravel',
+      id, name: 'New Geothermal Project', ref: 'GT-0000', locationId: 'st-WA', city: '', zone: '4C', ground: 'Silty Sand / Gravel',
       fidelity: 'Measured on site (TRT / drill log)', buildingType: 'Commercial Office (Class A)', floorArea: 12500, floors: 12,
       heatDemand: 850000, coolDemand: 1120000, peakLoad: 450, depthLimit: 350, analyzedAt: '2026-10-14T09:12:00',
-      stage: 'deployed', loadMode: 'known', vintage: '2005–2015 (modern code)', hours: 'Extended (14 h × 6 d)', glazing: 'Medium (25–40%)', siteArea: 9000,
-      client: 'Aurora Development LLC', updatedAt: '2026-10-14T09:12:00',
+      stage: 'assessment', loadMode: 'known', vintage: '2005–2015 (modern code)', hours: 'Extended (14 h × 6 d)', glazing: 'Medium (25–40%)', siteArea: 9000,
+      client: '', updatedAt: '',
       sector: 'commercial', baseline: 'gas-ac', projectType: 'replace', econ: {}
     };
     const p = Object.assign(base, over || {});
@@ -35,28 +35,45 @@
     };
   }
 
-  function seedReports() {
-    return [
-      { id: 'r0', title: 'Engineering Analysis Report', date: '2026-10-14', type: 'ENGINEERING' },
-      { id: 'r1', title: 'Comprehensive System Analysis', date: '2026-10-14', type: 'SIMULATION' },
-      { id: 'r2', title: 'Q4 Financial Yield Forecast', date: '2026-10-12', type: 'FINANCIAL' },
-      { id: 'r3', title: 'Borefield Thermal Risk Assessment', date: '2026-10-08', type: 'RISK' },
-      { id: 'r4', title: 'Environmental Impact Audit', date: '2026-09-29', type: 'COMPLIANCE' },
-      { id: 'r5', title: 'Operational Efficiency Log', date: '2026-09-25', type: 'MONITORING' }
-    ];
+  /* ---------- Sample projects (fictional buildings, real model; each shows a different situation) ---------- */
+  const SAMPLES = {
+    sample: { name: 'Riverside Office Building', ref: 'GT-2041', client: 'Sample client', locationId: 'st-MA', city: 'Worcester, MA', buildingType: 'Commercial Office (Class A)', floorArea: 12500, floors: 8,
+      vintage: '2005–2015 (modern code)', hours: 'Extended (14 h × 6 d)', glazing: 'Medium (25–40%)', siteArea: 9000, depthLimit: 300, baseline: 'oil-ac', projectType: 'replace', stage: 'deployed',
+      fidelity: 'Local records (well logs, geo maps)', analyzedAt: '2025-06-10T10:00:00', loadMode: 'calculated', blurb: 'Office replacing an oil boiler · system operating, 12 months of data' },
+    'sample-home': { name: 'Lakeview Residence', ref: 'GT-1187', client: 'Sample homeowner', locationId: 'st-MN', city: 'Brainerd, MN', buildingType: 'Single-Family Residential', floorArea: 230, floors: 2,
+      vintage: '2005–2015 (modern code)', hours: 'Continuous (24/7)', glazing: 'Medium (25–40%)', siteArea: 1500, depthLimit: 180, baseline: 'propane-ac', projectType: 'replace', stage: 'design',
+      fidelity: 'Regional estimate', analyzedAt: '2026-10-02T10:00:00', loadMode: 'calculated', blurb: 'Home on propane, furnace at end of life' },
+    'sample-school': { name: 'Cedar Valley Elementary School', ref: 'GT-3305', client: 'Sample school district', locationId: 'st-PA', city: 'Lancaster, PA', buildingType: 'Education / Campus', floorArea: 6500, floors: 2,
+      vintage: '2016+ (high performance)', hours: 'Standard (10 h × 5 d)', glazing: 'Medium (25–40%)', siteArea: 12000, depthLimit: 200, baseline: 'gas-ac', projectType: 'new', stage: 'assessment',
+      fidelity: 'Regional estimate', analyzedAt: '2026-10-20T10:00:00', loadMode: 'calculated', blurb: 'New school vs. natural gas — a marginal case' }
+  };
+  /* 12 months of example meter data for the operating sample: model expectation ± realistic scatter, one weak month to show alerts */
+  function sampleOps(a) {
+    const sim = E.simulate(a.project, a.design, {}, a.mitigation, { years: 1 }), r = E.compute(a.project, a.design, {}, a.mitigation);
+    const now = new Date(); const rows = [];
+    for (let k = 12; k >= 1; k--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - k, 15), i = d.getMonth();
+      const thermal = (a.project.heatDemand * E.HEAT_W[i] + a.project.coolDemand * E.COOL_W[i]) * r.coverage;
+      const wob = Math.sin(k * 2.3) * 0.04, weak = k === 2 ? -0.14 : 0;
+      const t = Math.round(thermal * (1 + Math.sin(k * 1.7) * 0.06));
+      rows.push({ month: d.getFullYear() + '-' + String(i + 1).padStart(2, '0'), thermal: t, elec: Math.round(t / (sim.cop[i] * (1 + wob + weak))), loop: +(i >= 5 && i <= 8 ? r.EWTc - 1 + Math.sin(k) : r.EWTh + 1 + Math.sin(k)).toFixed(1) });
+    }
+    return rows;
   }
-
-  function sampleProject() {
-    const a = defaultProject('sample', { name: 'Aurora District Phase 1', sample: true });
-    a.reports = seedReports();
-    a.progress = { site: true, building: true, design: true, costs: true, finance: true };
+  function sampleProject(id) {
+    id = SAMPLES[id] ? id : 'sample';
+    const cfg = Object.assign({}, SAMPLES[id]); delete cfg.blurb;
+    const a = defaultProject(id, Object.assign(cfg, { sample: true, econ: {}, updatedAt: cfg.analyzedAt }));
+    const st = a.project.stage;
+    a.progress = st === 'deployed' ? { site: true, building: true, design: true, costs: true, finance: true } : st === 'design' ? { site: true, building: true, design: true } : { site: true, building: true };
     const mk = (label, t, over) => { const d = Object.assign({}, a.design, over); const r = E.compute(a.project, d, {}, a.mitigation); return { t, label, design: d, scop: r.SCOP, capex: r.capex, payback: r.paybackYears, n: d.n, depth: d.depth }; };
-    a.history = [mk('Commissioned design', '2026-09-30T16:20:00', {}), mk('Design review v2', '2026-08-12T11:05:00', { n: 44, depth: 270 }), mk('Initial feasibility', '2026-06-03T09:40:00', { n: 48, depth: 250, spacing: 6.0 })];
-    a.log = [
-      { t: '2026-04-14T15:40:12', msg: 'Compressor Cycle Restart', cat: 'System', status: 'Success' },
-      { t: '2026-04-14T15:38:45', msg: 'Load threshold updated', cat: 'Config', status: 'Modified' },
-      { t: '2026-04-14T15:32:01', msg: 'Thermal Plume Calibration', cat: 'Intelligence', status: 'Completed' },
-      { t: '2026-04-14T15:15:30', msg: 'Loop balancing valve adjusted (+5%)', cat: 'Hardware', status: 'Active' }];
+    a.history = [mk('Recommended design', a.project.analyzedAt, {})];
+    if (st === 'deployed') {
+      a.history.unshift(mk('Commissioned design', '2025-09-30T16:20:00', {}));
+      a.reports = [{ id: 'r0', title: 'Feasibility & Engineering Analysis', date: '2025-07-01', type: 'ENGINEERING' }];
+      a.ops = { rows: sampleOps(a), updatedAt: new Date().toISOString() };
+      a.log = [{ t: '2025-09-30T16:20:00', msg: 'System commissioned — operation tracking started', cat: 'System', status: 'Success' }, { t: '2025-07-01T09:00:00', msg: 'Feasibility report generated', cat: 'Config', status: 'Success' }];
+    }
     return a;
   }
 
@@ -78,6 +95,7 @@
   try { const raw = localStorage.getItem(KEY); state = raw ? JSON.parse(raw) : null; } catch (e) { state = null; }
   /* migrate: drop chats seeded with old mock wording */
   if (state && state.settings) globalSettings(state.settings);
+  if (state && state.projects && state.projects.sample && /^Aurora/.test(state.projects.sample.project.name)) state.projects.sample = sampleProject('sample');   // old demo → new honest sample
   if (state && state.settings && !state.settings.unitsSet) { state.settings.units = 'imperial'; state.settings.unitsSet = true; }   // US market: imperial by default
   if (state && state.projects) Object.values(state.projects).forEach(p => {
     const pr = p.project; if (pr) { if (!pr.sector) pr.sector = E.sectorOf(pr); if (!pr.baseline) pr.baseline = 'gas-ac'; if (!pr.projectType) pr.projectType = 'replace'; if (!pr.econ) pr.econ = {}; if (E.FIDELITY_OLD[pr.fidelity]) pr.fidelity = E.FIDELITY_OLD[pr.fidelity]; } if (p.chat && JSON.stringify(p.chat).includes('Southern Cluster')) p.chat = []; if (p.reports) p.reports.forEach(r => { if (r.title === 'Borehole Zone 4 Risk Assessment') r.title = 'Borefield Thermal Risk Assessment'; }); });
@@ -116,8 +134,9 @@
     },
     logs() { const c = cur(); return c ? (c.log || []) : state.log; },
     mark(step) { const c = cur(); if (!c) return; c.progress = c.progress || {}; if (!c.progress[step]) { c.progress[step] = true; persist(); } },
-    samplePreview() { try { const a = sampleProject(); return E.compute(a.project, a.design, state.settings, a.mitigation); } catch (e) { return null; } },
-    loadSample() { const a = sampleProject(); if (state.projects.sample) { state.current = 'sample'; emit('switch'); return; } state.projects.sample = a; state.order.push('sample'); state.current = 'sample'; emit('switch'); },
+    SAMPLES,
+    samplePreview(id) { try { const a = sampleProject(id || 'sample'); return E.compute(a.project, a.design, state.settings, a.mitigation); } catch (e) { return null; } },
+    loadSample(id) { const ids = id ? [id] : Object.keys(SAMPLES); ids.forEach(k => { if (!state.projects[k]) { state.projects[k] = sampleProject(k); state.order.push(k); } }); state.current = id || 'sample'; emit('switch'); },
     setOps(rows) { const c = cur(); c.ops = { rows, updatedAt: now() }; emit('ops'); },
     setEcon(patch) { const c = cur(); c.project.econ = Object.assign({}, c.project.econ || {}, patch); c.project.updatedAt = now(); emit('project'); },
     setProject(patch, silent) {

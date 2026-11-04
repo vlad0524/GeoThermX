@@ -42,9 +42,10 @@
   function canCreate() { const P = GX.plan(); if (S.state.order.length >= P.projects) { U.modal({ title: 'Project limit reached', body: `<p style="margin:0">The ${P.name} plan includes up to ${P.projects} active projects. Archive a project or upgrade your plan.</p>`, actions: [{ label: 'Close', kind: 'ghost' }, { label: 'Compare plans', kind: 'primary', onClick: () => GX.go('preferences') }] }); return false; } return true; }
 
   /* ---- New project wizard ---- */
-  GX.newProject = () => {
+  GX.newProject = pre => {
     if (!GX.guard() || !canCreate()) return;
     const st = { step: 0, d: { name: 'New Geothermal Project', client: '', baseline: 'gas-ac', projectType: 'replace', locationId: 'st-TX', city: '', buildingType: 'Commercial Office (Class A)', floorArea: 8000, floors: 5, vintage: '2005–2015 (modern code)', hours: 'Standard (10 h × 5 d)', glazing: 'Medium (25–40%)', siteArea: 6000, depthLimit: 300, loadMode: 'calculated', heatDemand: 0, coolDemand: 0, peakLoad: 0 } };
+    if (pre && typeof pre === 'object' && !pre.target) Object.assign(st.d, pre);
     const opt = (o, v) => Object.keys(o).map(k => `<option ${k === v ? 'selected' : ''}>${k}</option>`).join('');
     const body = () => { const d = st.d; const L = E.location(d.locationId); const calc = E.loadCalc(Object.assign({}, d, { zone: L.zone }));
       return `<div class="wiz-steps">${['Basics', 'Building & site', 'Thermal loads'].map((t, i) => `<span class="${i === st.step ? 'on' : i < st.step ? 'done' : ''}">${i + 1}. ${t}</span>`).join('')}</div>` + [
@@ -72,7 +73,7 @@
       const cn = U.$('#wz-cancel', m); if (cn) cn.onclick = md.close;
       U.$('#wz-next', m).onclick = () => { read(m); if (st.step < 2) { st.step++; draw(); return; }
         const d = st.d; const over = Object.assign({}, d, { analyzedAt: '' }); if (d.loadMode === 'calculated') { delete over.heatDemand; delete over.coolDemand; delete over.peakLoad; }
-        S.createProject(over); S.log('Created project ' + d.name, 'Config', 'Success'); md.close(); U.toast('Project <b>' + esc(d.name) + '</b> created'); GX.go('site-intelligence'); }; };
+        S.createProject(over); S.log('Created project ' + d.name, 'Config', 'Success'); if (GX.track) GX.track('project-created', `${E.sectorOf(d)} · ${d.locationId.slice(3)} · ${d.baseline}`); md.close(); U.toast('Project <b>' + esc(d.name) + '</b> created'); GX.go('site-intelligence'); }; };
     draw();
   };
 })();
