@@ -4,12 +4,12 @@
   'use strict';
 
   const GROUND = {
-    'Silty Sand / Gravel': { k: 2.8, drill: 19.0, drillability: 0.92, stability: 0.94, water: 0.70, layer: 'saturated sand & gravel' },
-    'Clay / Silt':         { k: 1.5, drill: 17.5, drillability: 0.95, stability: 0.86, water: 0.55, layer: 'clay / silt' },
-    'Sandstone':           { k: 3.0, drill: 26.0, drillability: 0.80, stability: 0.96, water: 0.60, layer: 'sandstone' },
-    'Limestone':           { k: 2.6, drill: 24.0, drillability: 0.78, stability: 0.90, water: 0.65, layer: 'limestone' },
-    'Granite / Bedrock':   { k: 3.3, drill: 36.0, drillability: 0.60, stability: 0.98, water: 0.30, layer: 'granite bedrock' },
-    'Dry Sand':            { k: 1.1, drill: 18.0, drillability: 0.90, stability: 0.70, water: 0.20, layer: 'dry sand' }
+    'Silty Sand / Gravel': { k: 2.8, drill: 55.0, drillability: 0.92, stability: 0.94, water: 0.70, layer: 'saturated sand & gravel' },
+    'Clay / Silt':         { k: 1.5, drill: 50.0, drillability: 0.95, stability: 0.86, water: 0.55, layer: 'clay / silt' },
+    'Sandstone':           { k: 3.0, drill: 70.0, drillability: 0.80, stability: 0.96, water: 0.60, layer: 'sandstone' },
+    'Limestone':           { k: 2.6, drill: 66.0, drillability: 0.78, stability: 0.90, water: 0.65, layer: 'limestone' },
+    'Granite / Bedrock':   { k: 3.3, drill: 90.0, drillability: 0.60, stability: 0.98, water: 0.30, layer: 'granite bedrock' },
+    'Dry Sand':            { k: 1.1, drill: 52.0, drillability: 0.90, stability: 0.70, water: 0.20, layer: 'dry sand' }
   };
 
   const CLIMATE = {
@@ -59,7 +59,45 @@
     ['WV','West Virginia','Charleston',38.35,-81.63,'4A','Sandstone',0.85,1300],['WI','Wisconsin','Milwaukee',43.04,-87.91,'5A','Clay / Silt',0.55,1300],
     ['WY','Wyoming','Cheyenne',41.14,-104.82,'6B','Sandstone',0.85,1600]
   ];
-  const LOCATIONS = STATES.map(([code, name, city, lat, lon, zone, ground, grid, pv]) => ({ id: 'st-' + code, code, state: name, label: `${city}, ${code}`, city: `${city}, ${code}`, lat, lon, zone, ground, grid, pv }));
+  // Average retail energy prices by state — EIA annual averages (approx. 2024). Starting values only; editable per project.
+  // [residential electricity ¢/kWh, commercial electricity ¢/kWh, residential natural gas $/Mcf]
+  const PRICES = {
+    AL:[15.4,13.9,19],AK:[25.0,21.5,13],AZ:[14.9,12.0,20],AR:[12.8,10.5,16],CA:[32.0,26.0,20],CO:[15.4,12.5,12],CT:[30.0,22.0,20],DE:[16.5,12.0,18],DC:[18.0,15.5,17],
+    FL:[15.0,11.5,26],GA:[14.2,11.8,20],HI:[41.0,38.0,50],ID:[11.4,9.0,11],IL:[16.0,12.0,12.5],IN:[15.4,12.8,12],IA:[13.5,10.5,12],KS:[14.3,11.5,13],KY:[13.2,12.0,15],
+    LA:[12.0,11.0,15],ME:[27.5,19.5,22],MD:[18.5,13.0,17],MA:[30.5,22.0,22],MI:[19.5,14.0,11.5],MN:[15.6,12.5,11],MS:[13.6,12.5,15],MO:[13.4,10.8,15],MT:[13.0,11.8,11],
+    NE:[11.9,9.8,12],NV:[15.5,11.0,15],NH:[25.0,19.0,21],NJ:[19.5,15.0,13],NM:[14.5,11.5,13],NY:[24.5,19.5,18],NC:[14.0,10.8,17],ND:[11.2,10.0,10],OH:[16.0,11.8,14],
+    OK:[13.0,10.5,16],OR:[14.0,11.0,16],PA:[18.0,11.5,16],RI:[29.0,21.0,21],SC:[14.5,11.5,18],SD:[13.0,11.0,11],TN:[12.8,12.5,13],TX:[15.0,9.5,16],UT:[11.8,9.5,10.5],
+    VT:[22.5,19.5,18],VA:[14.7,9.8,17],WA:[12.5,11.0,16],WV:[14.8,11.5,14],WI:[17.8,13.0,11.5],WY:[12.5,10.8,11]
+  };
+  const KWH_PER_MCF = 303.9;
+  const LOCATIONS = STATES.map(([code, name, city, lat, lon, zone, ground, grid, pv]) => { const pr = PRICES[code] || [16, 12.5, 15];
+    return { id: 'st-' + code, code, state: name, label: `${city}, ${code}`, city: `${city}, ${code}`, lat, lon, zone, ground, grid, pv,
+      price: { res: { elec: pr[0] / 100, gas: pr[2] / KWH_PER_MCF }, com: { elec: pr[1] / 100, gas: pr[2] * 0.74 / KWH_PER_MCF } } }; });
+
+  // Existing ("baseline") heating & cooling system the geothermal system replaces
+  const BASELINES = {
+    'gas-ac':     { label: 'Natural gas furnace / boiler + AC', short: 'Gas furnace + AC', fuel: 'gas', eff: 0.90, coolCop: 3.2, co2: 0.181 },
+    'propane-ac': { label: 'Propane furnace + AC', short: 'Propane + AC', fuel: 'propane', eff: 0.90, coolCop: 3.2, co2: 0.215 },
+    'oil-ac':     { label: 'Heating oil boiler + AC', short: 'Heating oil + AC', fuel: 'oil', eff: 0.84, coolCop: 3.2, co2: 0.267 },
+    'elec-ac':    { label: 'Electric resistance heat + AC', short: 'Electric heat + AC', fuel: 'elec', eff: 1.0, coolCop: 3.2, co2: null },
+    'ashp':       { label: 'Air-source heat pump', short: 'Air-source heat pump', fuel: 'elec', eff: null, coolCop: 3.6, co2: null }
+  };
+  const SECTOR = {
+    residential: { label: 'Residential', itc: 0, equipRate: 950, avoidedPerKw: 900, maintPerKw: 10, itcNote: 'Federal 25D residential credit ended for systems installed after Dec 31, 2025. Check state and utility programs.' },
+    commercial:  { label: 'Commercial', itc: 0.30, equipRate: 450, avoidedPerKw: 380, maintPerKw: 15, itcNote: 'Federal §48 ITC for geothermal heat pumps: 30% base (prevailing wage / apprenticeship or < 1 MW) for construction starting before 2033, then 26% (2033), 22% (2034). Verify with a tax advisor.' }
+  };
+  const PROJECT_TYPES = {
+    replace:  { label: 'Replacing a system at end of life', short: 'End-of-life replacement', avoided: true },
+    new:      { label: 'New construction', short: 'New construction', avoided: true },
+    retrofit: { label: 'Early retrofit (current system still works)', short: 'Early retrofit', avoided: false }
+  };
+  const sectorOf = p => p.sector || (/Residential|Single-Family/.test(p.buildingType || '') ? 'residential' : 'commercial');
+  /* Project-specific economic defaults: state prices + sector rules. p.econ entries override them. */
+  function econDefaults(p) {
+    const loc = location(p.locationId, p), sec = sectorOf(p), S0 = SECTOR[sec], pr = loc.price[sec === 'residential' ? 'res' : 'com'];
+    return { elec: +pr.elec.toFixed(3), gas: +pr.gas.toFixed(3), propane: 0.105, oil: 0.095, itc: S0.itc, equipRate: S0.equipRate, maintPerKw: S0.maintPerKw, avoidedPerKw: S0.avoidedPerKw, drillMult: 1, grant: 0, utilityRebate: 0 };
+  }
+  function econ(p) { const d = econDefaults(p), o = p.econ || {}; Object.keys(o).forEach(k => { if (o[k] !== null && o[k] !== '' && o[k] !== undefined && isFinite(+o[k])) d[k] = +o[k]; }); return d; }
 
   const FLUIDS = {
     'Propylene Glycol 25%': { cop: 0.97, freeze: -10, density: 1.03 },
@@ -69,6 +107,7 @@
   };
 
   const BUILDINGS = {
+    'Single-Family Residential':   { other: 45,  eui: 100, gains: 6,  vent: 0.75 },
     'Commercial Office (Class A)': { other: 95,  eui: 160, gains: 25, vent: 1.0 },
     'Medical / Healthcare':        { other: 210, eui: 330, gains: 34, vent: 1.6 },
     'Multifamily Residential':     { other: 60,  eui: 120, gains: 9,  vent: 0.8 },
@@ -96,21 +135,26 @@
     const coolPeak = A * (bt.gains * 0.9 + uaF * Math.max(0, c.tdc - 24) + solarW * 0.5) / 1000;
     const gainsAnnual = gainsKw * hours;
     const heat = Math.max(0, UA * c.hdd * 24 * (hours >= 8760 ? 0.97 : 0.82) - 0.1 * gainsAnnual);
-    const cool = gainsAnnual * 0.75 + UA * c.cdd * 24 * 0.6 + A * solarW * 1100 / 1000 * 0.5;
+    const res = sectorOf(p) === 'residential';
+    const gainFrac = res ? clamp(c.cdd / 3000, 0.08, 0.6) : 0.75;             // homes only need cooling for gains in the warm season
+    const solarFrac = res ? clamp(c.cdd / 2000, 0.15, 0.6) : 0.5;
+    const cool = gainsAnnual * gainFrac + UA * c.cdd * 24 * 0.6 + A * solarW * 1100 / 1000 * solarFrac;
     const peak = Math.max(heatPeak, coolPeak) * 0.8;
-    return { heat: Math.round(heat / 1000) * 1000, cool: Math.round(cool / 1000) * 1000, heatPeak, coolPeak, peak: Math.round(peak / 5) * 5, UA, uaF, gainsKw, hours, c, bt, glz };
+    return { heat: Math.round(heat / 1000) * 1000, cool: Math.round(cool / 1000) * 1000, heatPeak, coolPeak, peak: peak < 50 ? Math.round(peak * 2) / 2 : Math.round(peak / 5) * 5, UA, uaF, gainsKw, hours, c, bt, glz };
   }
 
   /* ---------- Safety & compliance checks (preliminary, verify locally) ---------- */
-  function compliance(r, p, d) {
+  function compliance(r, p, d, u) {
+    const fx = (v, dd) => Number(v).toLocaleString('en-US', { maximumFractionDigits: dd || 0 });
+    u = u || { len: (m, dd) => fx(m, dd) + ' m', area: m2 => fx(m2) + ' m²', temp: (c, dd) => fx(c, dd == null ? 1 : dd) + '°C', dT: (c, dd) => fx(c, dd == null ? 1 : dd) + '°C' };
     const siteArea = +p.siteArea || 0;
     const field = r.footprint * 1.15;
     const items = [];
     const add = (cat, title, status, note, ref) => items.push({ cat, title, status, note, ref });
-    add('Design', 'Borehole depth within drilling constraint', d.depth <= p.depthLimit ? 'pass' : 'fail', `${d.depth} m planned vs ${p.depthLimit} m limit.`, 'Project constraint');
-    add('Design', 'Borehole spacing for thermal interference', d.spacing >= 6 ? 'pass' : d.spacing >= 4.5 ? 'warn' : 'fail', `${d.spacing} m spacing. Common practice is about 6 m (20 ft) or more for large fields.`, 'IGSHPA design guidance');
-    add('Design', 'Borefield fits available site area', !siteArea ? 'warn' : field <= siteArea ? 'pass' : 'fail', siteArea ? `Field needs ≈${Math.round(field).toLocaleString('en-US')} m² incl. setbacks; site has ${Math.round(siteArea).toLocaleString('en-US')} m².` : 'Enter available site area in Project Setup.', 'Site survey');
-    add('Design', 'Freeze protection margin', r.EWTh - 3 > r.fl.freeze ? 'pass' : 'fail', `Min entering water ${r.EWTh.toFixed(1)}°C; fluid freeze point ${r.fl.freeze}°C (needs ≥3°C margin).`, 'ASHRAE / manufacturer data');
+    add('Design', 'Borehole depth within drilling constraint', d.depth <= p.depthLimit ? 'pass' : 'fail', `${u.len(d.depth)} planned vs ${u.len(p.depthLimit)} limit.`, 'Project constraint');
+    add('Design', 'Borehole spacing for thermal interference', d.spacing >= 6 ? 'pass' : d.spacing >= 4.5 ? 'warn' : 'fail', `${u.len(d.spacing, 1)} spacing. Common practice is about ${u.len(6)} or more for large fields.`, 'IGSHPA design guidance');
+    add('Design', 'Borefield fits available site area', !siteArea ? 'warn' : field <= siteArea ? 'pass' : 'fail', siteArea ? `Field needs ≈${u.area(field)} incl. setbacks; site has ${u.area(siteArea)}.` : 'Enter available site area on the Building & Loads page.', 'Site survey');
+    add('Design', 'Freeze protection margin', r.EWTh - 3 > r.fl.freeze ? 'pass' : 'fail', `Min entering water ${u.temp(r.EWTh)}; fluid freeze point ${u.temp(r.fl.freeze, 0)} (needs ≥${u.dT(3, 0)} margin).`, 'ASHRAE / manufacturer data');
     add('Design', 'Loop length vs. required (redundancy)', r.ratio >= 1 ? 'pass' : r.ratio >= 0.92 ? 'warn' : 'fail', `Installed ${(r.ratio * 100).toFixed(0)}% of required loop length.`, 'GeoThermX sizing');
     add('Permits', 'State well / borehole drilling permit', 'action', 'Most states require a licensed driller and a permit or registration for geothermal boreholes.', 'State water / geological agency');
     if (d.loop === 'open') add('Permits', 'Groundwater withdrawal & discharge permit', 'action', 'Open-loop systems need water-rights and discharge approval plus water-quality testing.', 'State environmental agency');
@@ -124,7 +168,8 @@
     return items;
   }
 
-  const FIDELITY = { 'High (Sensor + Satellite)': 1.0, 'Medium (Satellite Only)': 0.86, 'Low (Regional Model)': 0.72 };
+  const FIDELITY = { 'Measured on site (TRT / drill log)': 1.0, 'Local records (well logs, geo maps)': 0.86, 'Regional estimate': 0.72 };
+  const FIDELITY_OLD = { 'High (Sensor + Satellite)': 'Measured on site (TRT / drill log)', 'Medium (Satellite Only)': 'Local records (well logs, geo maps)', 'Low (Regional Model)': 'Regional estimate' };
 
   const DEFAULT_SETTINGS = {
     elec: 0.14,          // $/kWh
@@ -133,14 +178,14 @@
     equipRate: 194,      // $/kW heat pump capacity
     discount: 0.06,
     escalation: 0.025,   // energy price escalation / yr
-    itc: 0.30,           // federal investment tax credit share (editable assumption)
-    grant: 12000,
-    utilityRebate: 4500,
+    itc: 0.30,           // fallback only — real value comes from project sector (econDefaults)
+    grant: 0,            // state incentive ($), per project
+    utilityRebate: 0,    // utility rebate ($), per project
+    propane: 0.105, oil: 0.095, maintPerKw: 15, equipMult: 1, drillAdj: 1,
     carbonPrice: 10,     // $/t CO2 offset credit
-    maintSave: 8000,     // $/yr vs conventional HVAC
-    baselineBoilerEff: 0.9,
+        baselineBoilerEff: 0.9,
     baselineChillerCop: 3.0,
-    includeGrant: true, includeRebate: true, includeCarbon: true, includeItc: true
+    includeGrant: true, includeRebate: true, includeCarbon: false, includeItc: true
   };
 
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -158,7 +203,8 @@
 
   /* ---------- Core steady-state model ---------- */
   function compute(project, design, settings, mitigation) {
-    const s = Object.assign({}, DEFAULT_SETTINGS, settings || {});
+    const s = Object.assign({}, DEFAULT_SETTINGS, econ(project), settings || {});
+    const sector = sectorOf(project);
     const m = Object.assign({ rebalance: false, returnTemp: 0, flowOpt: false, copBoost: 0 }, mitigation || {});
     const p = project, d = design;
     const g0 = GROUND[p.ground] || GROUND['Silty Sand / Gravel'];
@@ -212,27 +258,33 @@
     const effScore = clamp(SCOP / 5.0 * 100, 0, 99.5);
 
     // Costs
-    const drillPerM = g.drill * (1 + 0.0012 * Math.max(0, depth - 150)) * orientCost * loopCost * s.drillMult;
+    const drillPerM = g.drill * (1 + 0.0012 * Math.max(0, depth - 150)) * orientCost * loopCost * s.drillMult * (s.drillAdj || 1);
     const drilling = L * drillPerM + n * 380;
-    const equipment = s.equipRate * Math.max(heatPeak, coolPeak);
+    const equipment = s.equipRate * (s.equipMult || 1) * Math.max(heatPeak, coolPeak);
     const fieldPrep = n * spacing * spacing * 9;
     const integration = 0.05 * (drilling + equipment) + fieldPrep;
     const capex = drilling + equipment + integration;
 
     // Operations
-    const baseHeatFuel = H / s.baselineBoilerEff;
-    const baseCoolElec = C / s.baselineChillerCop;
-    const baselineCost = baseHeatFuel * s.gas + baseCoolElec * s.elec;
+    const bl = Object.assign({ key: BASELINES[p.baseline] ? p.baseline : 'gas-ac' }, BASELINES[p.baseline] || BASELINES['gas-ac']);
+    if (bl.eff == null) bl.eff = clamp(3.2 - c.hdd * 0.00025, 1.7, 3.1);   // air-source seasonal heating COP falls in colder climates
+    bl.price = bl.fuel === 'elec' ? s.elec : s[bl.fuel];
+    const baseHeatFuel = H / bl.eff;
+    const baseCoolElec = C / bl.coolCop;
+    const baseHeatCost = baseHeatFuel * bl.price, baseCoolCost = baseCoolElec * s.elec;
+    const baselineCost = baseHeatCost + baseCoolCost;
+    Object.assign(bl, { heatCost: baseHeatCost, coolCost: baseCoolCost, heatFuelKwh: baseHeatFuel, coolElecKwh: baseCoolElec });
     const backupElec = (H + C) * (1 - coverage) / 3.0;
     const gshpElec = H * coverage / COPh + C * coverage / COPc + pumpKwh + backupElec;
     const gshpCost = gshpElec * s.elec;
     const energySavings = baselineCost - gshpCost;
-    const annualSavings = energySavings + s.maintSave;
+    const maintSave = s.maintPerKw * Math.max(heatPeak, coolPeak);
+    const annualSavings = energySavings + maintSave;
 
     // Carbon
     const bt = BUILDINGS[p.buildingType] || BUILDINGS['Commercial Office (Class A)'];
     const otherCo2 = p.floorArea * bt.other * loc.grid / 1000;
-    const baseCo2 = (baseHeatFuel * 0.181 + baseCoolElec * loc.grid) / 1000;
+    const baseCo2 = (baseHeatFuel * (bl.co2 == null ? loc.grid : bl.co2) + baseCoolElec * loc.grid) / 1000;
     const gshpCo2 = gshpElec * loc.grid / 1000;
     const co2Saved = baseCo2 - gshpCo2;
     const co2Pct = co2Saved / (baseCo2 + otherCo2) * 100;
@@ -243,7 +295,9 @@
     const rebate = s.includeRebate ? s.utilityRebate : 0;
     const carbonCredit = s.includeCarbon ? Math.round(co2Saved * s.carbonPrice) : 0;
     const incentives = itc + grant + rebate + carbonCredit;
-    const netCapex = Math.max(0, capex - incentives);
+    const ptype = PROJECT_TYPES[p.projectType] ? p.projectType : 'replace';
+    const avoided = PROJECT_TYPES[ptype].avoided ? s.avoidedPerKw * Math.max(heatPeak, coolPeak) : 0;   // baseline equipment that would have been bought anyway
+    const netCapex = Math.max(0, capex - incentives - avoided);
 
     // Lifecycle cash flow (20 years) with escalation + degradation
     const degr = clamp(Math.abs(drift) * 0.17 / Math.max(COPc, 1) * 100 * 0.6 + 0.35, 0.2, 6); // %/yr efficiency loss
@@ -275,7 +329,7 @@
     const suit = Math.round(100 * (0.30 * kScore + 0.20 * g.drillability + 0.15 * g.stability + 0.15 * c.fit + 0.10 * depthFit + 0.10 * fid));
 
     return {
-      inputs: { p, d, s, m }, g, c, loc, fl,
+      inputs: { p, d, s, m }, g, c, loc, fl, sector, baseline: bl, maintSave,
       n, depth, spacing, flow: effFlow, L, Lreq, Lh, Lc, ratio, rh, rc, fsp, qh, qc,
       COPh, COPc, SCOP, EWTh, EWTc, drift, imbalance, Enet,
       capacity, capacityC, capacityH, utilization, coverage, annualOutput, effScore, stability,
@@ -283,13 +337,13 @@
       drillPerM, drilling, equipment, integration, fieldPrep, capex,
       baselineCost, gshpCost, gshpElec, energySavings, annualSavings,
       co2Saved, co2Pct, baseCo2, otherCo2,
-      itc, grant, rebate, carbonCredit, incentives, netCapex,
+      itc, grant, rebate, carbonCredit, incentives, netCapex, avoided, projectType: ptype,
       degr, flows, cum, paybackYears: paybackYears === null ? 99 : paybackYears, simplePayback,
       sav10, netProfit10, roi10, npv20, irr,
       risk, suit, kScore, footprint: n * spacing * spacing,
       capexLow: capex * 0.93, capexHigh: capex * 1.08,
-      paybackLow: Math.max(0, capex * 0.93 - incentives) / Math.max(1, annualSavings * 1.10) * (paybackYears === null ? 1 : paybackYears / Math.max(0.1, simplePayback)),
-      paybackHigh: Math.max(0, capex * 1.08 - incentives) / Math.max(1, annualSavings * 0.88) * (paybackYears === null ? 1 : paybackYears / Math.max(0.1, simplePayback)),
+      paybackLow: Math.max(0, capex * 0.93 - incentives - avoided) / Math.max(1, annualSavings * 1.10) * (paybackYears === null ? 1 : paybackYears / Math.max(0.1, simplePayback)),
+      paybackHigh: Math.max(0, capex * 1.08 - incentives - avoided) / Math.max(1, annualSavings * 0.88) * (paybackYears === null ? 1 : paybackYears / Math.max(0.1, simplePayback)),
       ftPerTon: (L * 3.28084) / Math.max(0.1, Math.max(coolPeak, heatPeak) / 3.517),
       mPerKw: L / Math.max(1, Math.max(coolPeak, heatPeak))
     };
@@ -339,8 +393,9 @@
     const share = (CLIMATE[project.zone] || CLIMATE['4C']).heatShare;
     const totalE = (+project.heatDemand) + (+project.coolDemand);
     const hFrac = totalE > 0 ? (+project.heatDemand) / totalE : share;
-    d.heatPeak = Math.max(5, Math.round(peak * (0.5 + 1.0 * hFrac) / 5) * 5);
-    d.coolPeak = Math.max(5, Math.round(peak * (0.55 + 1.3 * (1 - hFrac)) / 5) * 5);
+    const rnd = v => v < 60 ? Math.max(2, Math.round(v * 2) / 2) : Math.round(v / 5) * 5;   // fine steps for homes, 5 kW steps for large buildings
+    d.heatPeak = rnd(peak * (0.5 + 1.0 * hFrac));
+    d.coolPeak = rnd(peak * (0.55 + 1.3 * (1 - hFrac)));
     const depth = clamp(Math.floor(Math.min(+project.depthLimit || 300, 280) / 10) * 10, 60, 400);
     d.depth = depth; d.n = 10;
     let r = compute(project, d, settings);
@@ -381,10 +436,10 @@
     const std = Object.assign({}, design, { depth: Math.min(200, project.depthLimit || 200), spacing: 6.0, flow: 1.24 });
     std.n = 10; let rs = compute(project, std, settings, mitigation);
     for (let i = 0; i < 3; i++) { std.n = Math.ceil(rs.Lreq * 1.10 / std.depth); rs = compute(project, std, settings, mitigation); }
-    rs = compute(project, std, Object.assign({}, settings, { equipRate: (settings.equipRate || DEFAULT_SETTINGS.equipRate) * 0.94 }), Object.assign({}, mitigation, { copBoost: -0.04 }));
+    rs = compute(project, std, Object.assign({}, settings, { equipMult: 0.94 }), Object.assign({}, mitigation, { copBoost: -0.04 }));
     const ce = Object.assign({}, opt.design, { spacing: 5.0, flow: 1.24 });
     ce.n = Math.max(1, Math.ceil(opt.result.Lreq * 0.80 / ce.depth));
-    const rc = compute(project, ce, Object.assign({}, settings, { equipRate: (settings.equipRate || DEFAULT_SETTINGS.equipRate) * 0.85, drillMult: (settings.drillMult || 1) * 0.92 }), Object.assign({}, mitigation, { copBoost: -0.06 }));
+    const rc = compute(project, ce, Object.assign({}, settings, { equipMult: 0.85, drillAdj: 0.92 }), Object.assign({}, mitigation, { copBoost: -0.06 }));
     const list = [
       { id: 'standard', name: 'Standard Design', design: std, r: rs },
       { id: 'optimized', name: 'Optimized Layout', design: opt.design, r: opt.result },
@@ -500,5 +555,5 @@
     return { kw, kwh, offset, cost, roiUp };
   }
 
-  root.GXEngine = { STATES, VINTAGE, HOURS, GLAZING, loadCalc, compliance, GROUND, CLIMATE, LOCATIONS, FLUIDS, BUILDINGS, FIDELITY, DEFAULT_SETTINGS, MONTHS, HEAT_W, COOL_W, compute, recommend, optimize, scenarios, simulate, benchmark, probe, hybrid, location, clamp, normCdf };
+  root.GXEngine = { FIDELITY_OLD, PROJECT_TYPES, PRICES, BASELINES, SECTOR, sectorOf, econ, econDefaults, STATES, VINTAGE, HOURS, GLAZING, loadCalc, compliance, GROUND, CLIMATE, LOCATIONS, FLUIDS, BUILDINGS, FIDELITY, DEFAULT_SETTINGS, MONTHS, HEAT_W, COOL_W, compute, recommend, optimize, scenarios, simulate, benchmark, probe, hybrid, location, clamp, normCdf };
 })(typeof window !== 'undefined' ? window : globalThis);

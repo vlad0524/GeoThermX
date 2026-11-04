@@ -7,12 +7,14 @@
   function defaultProject(id, over) {
     const base = {
       id, name: 'Aurora District Phase 1', ref: 'GT-9920', locationId: 'st-WA', city: 'Seattle, WA', zone: '4C', ground: 'Silty Sand / Gravel',
-      fidelity: 'High (Sensor + Satellite)', buildingType: 'Commercial Office (Class A)', floorArea: 12500, floors: 12,
+      fidelity: 'Measured on site (TRT / drill log)', buildingType: 'Commercial Office (Class A)', floorArea: 12500, floors: 12,
       heatDemand: 850000, coolDemand: 1120000, peakLoad: 450, depthLimit: 350, analyzedAt: '2026-10-14T09:12:00',
       stage: 'deployed', loadMode: 'known', vintage: '2005–2015 (modern code)', hours: 'Extended (14 h × 6 d)', glazing: 'Medium (25–40%)', siteArea: 9000,
-      client: 'Aurora Development LLC', updatedAt: '2026-10-14T09:12:00'
+      client: 'Aurora Development LLC', updatedAt: '2026-10-14T09:12:00',
+      sector: 'commercial', baseline: 'gas-ac', projectType: 'replace', econ: {}
     };
     const p = Object.assign(base, over || {});
+    if (!over || !over.sector) p.sector = E.sectorOf(Object.assign({}, p, { sector: null }));
     if (p.loadMode === 'calculated') { const l = E.loadCalc(p); p.heatDemand = l.heat; p.coolDemand = l.cool; p.peakLoad = l.peak; }
     const rec = E.recommend(p, {});
     return {
@@ -23,7 +25,7 @@
       prevEff: null,
       mitigation: { rebalance: false, returnTemp: 0, flowOpt: false },
       drill: { auto: true, n: 16, depth: 180 },
-      sim: { scenario: 'winter', ambient: -12, loadVar: 25, demand: +((p.heatDemand + p.coolDemand) / 1e6).toFixed(2), years: 5 },
+      sim: { scenario: 'winter', ambient: -12, loadVar: 25, demand: +((p.heatDemand + p.coolDemand) / 1e6).toFixed(4), years: 5 },
       alerts: null,
       reports: [],
       chat: [],
@@ -47,8 +49,8 @@
   function sampleProject() {
     const a = defaultProject('sample', { name: 'Aurora District Phase 1', sample: true });
     a.reports = seedReports();
-    a.progress = { site: true, building: true, design: true, finance: true };
-    const mk = (label, t, over) => { const d = Object.assign({}, a.design, over); const r = E.compute(a.project, d, E.DEFAULT_SETTINGS, a.mitigation); return { t, label, design: d, scop: r.SCOP, capex: r.capex, payback: r.paybackYears, n: d.n, depth: d.depth }; };
+    a.progress = { site: true, building: true, design: true, costs: true, finance: true };
+    const mk = (label, t, over) => { const d = Object.assign({}, a.design, over); const r = E.compute(a.project, d, {}, a.mitigation); return { t, label, design: d, scop: r.SCOP, capex: r.capex, payback: r.paybackYears, n: d.n, depth: d.depth }; };
     a.history = [mk('Commissioned design', '2026-09-30T16:20:00', {}), mk('Design review v2', '2026-08-12T11:05:00', { n: 44, depth: 270 }), mk('Initial feasibility', '2026-06-03T09:40:00', { n: 48, depth: 250, spacing: 6.0 })];
     a.log = [
       { t: '2026-04-14T15:40:12', msg: 'Compressor Cycle Restart', cat: 'System', status: 'Success' },
@@ -58,11 +60,15 @@
     return a;
   }
 
+  /* Economic inputs live on each project (p.econ, defaults from state + sector); global settings keep only financial assumptions & preferences. */
+  const ECON_KEYS = ['elec', 'gas', 'propane', 'oil', 'itc', 'equipRate', 'maintPerKw', 'avoidedPerKw', 'drillMult', 'grant', 'utilityRebate', 'maintSave', 'baselineBoilerEff', 'baselineChillerCop', 'equipMult', 'drillAdj'];
+  function globalSettings(st) { ECON_KEYS.forEach(k => delete st[k]); return st; }
+
   function freshState() {
     return {
       v: 5, current: null,
       projects: {}, order: [],
-      settings: Object.assign({}, E.DEFAULT_SETTINGS, { units: 'metric', tips: true, hiddenTips: {} }),
+      settings: globalSettings(Object.assign({}, E.DEFAULT_SETTINGS, { units: 'imperial', unitsSet: true, tips: true, hiddenTips: {} })),
       user: { access: 'admin' },
       log: []
     };
@@ -71,7 +77,10 @@
   let state;
   try { const raw = localStorage.getItem(KEY); state = raw ? JSON.parse(raw) : null; } catch (e) { state = null; }
   /* migrate: drop chats seeded with old mock wording */
-  if (state && state.projects) Object.values(state.projects).forEach(p => { if (p.chat && JSON.stringify(p.chat).includes('Southern Cluster')) p.chat = []; if (p.reports) p.reports.forEach(r => { if (r.title === 'Borehole Zone 4 Risk Assessment') r.title = 'Borefield Thermal Risk Assessment'; }); });
+  if (state && state.settings) globalSettings(state.settings);
+  if (state && state.settings && !state.settings.unitsSet) { state.settings.units = 'imperial'; state.settings.unitsSet = true; }   // US market: imperial by default
+  if (state && state.projects) Object.values(state.projects).forEach(p => {
+    const pr = p.project; if (pr) { if (!pr.sector) pr.sector = E.sectorOf(pr); if (!pr.baseline) pr.baseline = 'gas-ac'; if (!pr.projectType) pr.projectType = 'replace'; if (!pr.econ) pr.econ = {}; if (E.FIDELITY_OLD[pr.fidelity]) pr.fidelity = E.FIDELITY_OLD[pr.fidelity]; } if (p.chat && JSON.stringify(p.chat).includes('Southern Cluster')) p.chat = []; if (p.reports) p.reports.forEach(r => { if (r.title === 'Borehole Zone 4 Risk Assessment') r.title = 'Borefield Thermal Risk Assessment'; }); });
   if (!state || state.v !== 5) state = freshState();
 
   const subs = new Set();
@@ -110,6 +119,7 @@
     samplePreview() { try { const a = sampleProject(); return E.compute(a.project, a.design, state.settings, a.mitigation); } catch (e) { return null; } },
     loadSample() { const a = sampleProject(); if (state.projects.sample) { state.current = 'sample'; emit('switch'); return; } state.projects.sample = a; state.order.push('sample'); state.current = 'sample'; emit('switch'); },
     setOps(rows) { const c = cur(); c.ops = { rows, updatedAt: now() }; emit('ops'); },
+    setEcon(patch) { const c = cur(); c.project.econ = Object.assign({}, c.project.econ || {}, patch); c.project.updatedAt = now(); emit('project'); },
     setProject(patch, silent) {
       const c = cur();
       Object.assign(c.project, patch);
@@ -117,6 +127,7 @@
       if (c.project.loadMode === 'calculated' && !('heatDemand' in patch) && !('coolDemand' in patch) && !('peakLoad' in patch)) {
         const l = E.loadCalc(c.project); c.project.heatDemand = l.heat; c.project.coolDemand = l.cool; c.project.peakLoad = l.peak;
       }
+      if (c.sim) c.sim.demand = +((c.project.heatDemand + c.project.coolDemand) / 1e6).toFixed(4);   // keep simulation demand in step with building loads
       if (patch.locationId && !('zone' in patch)) {
         const L = E.location(patch.locationId);
         c.project.zone = L.zone; if (!('ground' in patch)) c.project.ground = L.ground;
@@ -163,7 +174,7 @@
     createProject(over) {
       const id = 'p' + Date.now().toString(36);
       const L = E.location(over.locationId || 'st-WA');
-      state.projects[id] = defaultProject(id, Object.assign({ zone: L.zone, ground: L.ground, city: '', ref: 'GT-' + (1000 + Math.floor(Math.random() * 8999)), stage: 'assessment', loadMode: 'calculated', client: '', siteArea: 0, analyzedAt: '', updatedAt: now() }, over));
+      state.projects[id] = defaultProject(id, Object.assign({ zone: L.zone, ground: L.ground, city: '', ref: 'GT-' + (1000 + Math.floor(Math.random() * 8999)), stage: 'assessment', fidelity: 'Regional estimate', loadMode: 'calculated', client: '', siteArea: 0, analyzedAt: '', updatedAt: now() }, over));
       state.projects[id].progress = { building: true };
       state.order.unshift(id); state.current = id;
       emit('switch');

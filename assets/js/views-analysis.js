@@ -7,10 +7,12 @@
   /* ================= SIMULATION LAB ================= */
   const SCN = { standard: ['Standard Operation', 0, 0], winter: ['Extreme Winter Load', -12, 25], cooling: ['Maximum Cooling (Summer)', 8, 20] };
   GX.views['simulation-lab'] = {
-    name: 'Simulation Lab', header: { mode: 'step', step: 5, label: 'Simulation Lab' },
+    name: 'Long-term simulation', header: { mode: 'step', step: 3, label: 'Ground Loop' },
     state: { show: { eff: true, load: false, thermal: true }, cursor: null, animate: true },
     render(el) {
       const s = S.cur().sim;
+      const base = (S.cur().project.heatDemand + S.cur().project.coolDemand) / 1e6;   // GWh/yr
+      const demF = v => +v >= 1 ? (+v).toFixed(2) + ' GWh/yr' : U.n(v * 1000, +v < 0.1 ? 1 : 0) + ' MWh/yr';
       el.innerHTML = `<div class="sim-grid">
         <div class="card sim-ctl">
           <h3 class="card-title">Simulation Controls</h3>
@@ -19,7 +21,7 @@
           <div class="sim-lbl" style="margin-top:26px">Input Variables</div>
           ${slider('sim-amb', 'Ambient Temp Shift', -20, 15, 1, s.ambient, v => (v > 0 ? '+' : '') + U.dT(v, 0))}
           ${slider('sim-lv', 'Load Variation', -30, 50, 5, s.loadVar, v => (v > 0 ? '+' : '') + v + '%')}
-          ${slider('sim-dem', 'Energy Demand', 0.2, 10, 0.05, s.demand, v => (+v).toFixed(2) + ' GWh')}
+          ${slider('sim-dem', 'Energy Demand', +(base * 0.3).toPrecision(2), +(base * 3).toPrecision(2), +(base / 50).toPrecision(1), U.clamp(s.demand, base * 0.3, base * 3), demF)}
           <div class="sim-lbl" style="margin-top:26px">Simulation Range</div>
           <div class="range-seg">${[1, 5, 10].map(y => `<button data-yrs="${y}" class="${s.years === y ? 'on' : ''}">${y}Y</button>`).join('')}</div>
           <button class="btn btn-accent btn-block sim-run" id="sim-run">Run Simulation</button>
@@ -35,7 +37,7 @@
         <div class="card sim-met" id="sim-met"></div>
       </div>`;
       function slider(id, label, min, max, step, val, f) { return `<div class="sl"><div class="between"><label for="${id}">${label}</label><span class="muted num" id="${id}-v">${f(val)}</span></div><input type="range" class="range" id="${id}" min="${min}" max="${max}" step="${step}" value="${val}" data-edit></div>`; }
-      const fm = { 'sim-amb': ['ambient', v => (v > 0 ? '+' : '') + U.dT(+v, 0)], 'sim-lv': ['loadVar', v => (v > 0 ? '+' : '') + v + '%'], 'sim-dem': ['demand', v => (+v).toFixed(2) + ' GWh'] };
+      const fm = { 'sim-amb': ['ambient', v => (v > 0 ? '+' : '') + U.dT(+v, 0)], 'sim-lv': ['loadVar', v => (v > 0 ? '+' : '') + v + '%'], 'sim-dem': ['demand', demF] };
       Object.keys(fm).forEach(id => {
         const inp = U.$('#' + id, el);
         const paintFill = () => { const p = (inp.value - inp.min) / (inp.max - inp.min) * 100; inp.style.background = `linear-gradient(90deg, var(--line) ${p}%, var(--line) ${p}%)`; };
@@ -85,10 +87,10 @@
         ${this.state.show.thermal ? path(yT, '', '#64748b', '2 4', 1.3) : ''}
         ${this.state.show.eff ? path(yE, '', '#14b8a6', null, 2.4) : ''}
         <line id="sim-cur" x1="0" x2="0" y1="0" y2="${H}" stroke="#0f172a" stroke-dasharray="3 3" opacity="0"/></svg>
-        <div class="sim-stats"><div class="ss"><b class="green">${U.count(sim.maxCop, 'n2', 'sm-pk')}</b><span>Peak COP</span></div><div class="ss"><b class="red">${U.count(sim.minCop, 'n2', 'sm-mn')}</b><span>Min. Efficiency</span></div><div class="ss"><b>${U.count(sim.avgLoad, 'n0', 'sm-al')} kW</b><span>Avg. Load</span></div></div>
+        <div class="sim-stats"><div class="ss"><b class="green">${U.count(sim.maxCop, 'n2', 'sm-pk')}</b><span>Peak COP</span></div><div class="ss"><b class="red">${U.count(sim.minCop, 'n2', 'sm-mn')}</b><span>Min. Efficiency</span></div><div class="ss"><b>${U.count(U.powV(sim.avgLoad), U.imp() ? 'n1' : 'n0', 'sm-al')} ${U.powU()}</b><span>Avg. Load</span></div></div>
         <div class="sim-legend">${this.state.show.eff ? '<span><i style="background:#14b8a6"></i>COP</span>' : ''}${this.state.show.load ? '<span><i class="dash" style="border-color:#334155"></i>Load</span>' : ''}${this.state.show.thermal ? '<span><i class="dash" style="border-color:#64748b"></i>Ground temp</span>' : ''}<span><i style="background:#fdecec"></i>Peak stress</span></div>`;
       U.bindLineHover(U.$('#sim-svg', el), xs, i => `Month ${i + 1} · ${E.MONTHS[i % 12]} Y${Math.floor(i / 12) + 1}`, [
-        { name: 'COP', values: sim.cop, fmt: v => v.toFixed(2) }, { name: 'Load', values: sim.load, fmt: v => U.n(v, 0) + ' kW' }, { name: 'Ground', values: sim.ground, fmt: v => U.temp(v) }], { ys: yE });
+        { name: 'COP', values: sim.cop, fmt: v => v.toFixed(2) }, { name: 'Load', values: sim.load, fmt: v => U.pow(v, 1) }, { name: 'Ground', values: sim.ground, fmt: v => U.temp(v) }], { ys: yE });
       // timeline gradient from stress
       const mn = sim.minCop, mx = sim.maxCop; const stops = [];
       const sev = U.clamp(0.55 + sim.overloadProb / 120 + sim.degPerYr / 6 + (sim.imbalanceLabel === 'High' ? 0.2 : sim.imbalanceLabel === 'Moderate' ? 0.1 : 0), 0.4, 1.15);
@@ -104,7 +106,7 @@
         <div class="km"><span>Avg. Efficiency</span><b>${U.count(sim.avgCop, 'n2', 'sm-avg')} COP</b></div>
         <div class="km"><span>Peak Load Capacity</span><b>${U.count(sim.peakCap, 'pct0', 'sm-cap')}</b></div>
         <div class="km"><span>Stability Score</span><b style="color:${sim.stability === 'Excellent' ? 'var(--green)' : sim.stability === 'Good' ? 'var(--teal-600)' : 'var(--amber)'}">${sim.stability}</b></div>
-        <h3 class="card-title" style="margin-top:30px">AI Predictive Insights</h3>
+        <h3 class="card-title" style="margin-top:30px">Simulation Insights</h3>
         <div class="pi"><div class="pi-t">✦ Thermal Balance</div>System loses ${sim.lossPct.toFixed(0)}% efficiency during ${SCN[s.scenario][0].toLowerCase().replace(' (summer)', '')} simulations due to ${s.scenario === 'cooling' ? 'elevated loop return temperatures' : 'fluid viscosity changes'}.</div>
         <div class="pi"><b>Month ${sim.worstMonth + 1}:</b> Peak load creates the largest temporary thermal imbalance of the year in the borefield core.</div>
         <h3 class="card-title" style="margin-top:30px">Risk Simulation</h3>
@@ -119,9 +121,9 @@
       U.$('#tl-mark', el).style.left = x * 100 + '%';
       U.$('#tl-lbl', el).textContent = 'Month ' + (i + 1);
       const cur = U.$('#sim-cur', el); if (cur) { cur.setAttribute('x1', x * 700); cur.setAttribute('x2', x * 700); cur.setAttribute('opacity', '.5'); }
-      U.$('#tl-mark', el).title = `COP ${sim.cop[i].toFixed(2)} · Load ${U.n(sim.load[i], 0)} kW · Ground ${sim.ground[i].toFixed(1)}°C`;
+      U.$('#tl-mark', el).title = `COP ${sim.cop[i].toFixed(2)} · Load ${U.pow(sim.load[i], 1)} · Ground ${U.temp(sim.ground[i])}`;
     },
-    foot: () => `<span class="spacer"></span><button class="btn btn-ghost" data-go="system-design">Back to Layout</button><button class="btn btn-accent" data-go="scenario-comparison">Compare with Scenario B</button><button class="btn btn-dark" id="sim-final">Finalize Simulation</button>`
+    foot: () => `<span class="spacer"></span><button class="btn btn-ghost" data-go="system-design">Back to Design</button><button class="btn btn-ghost" id="sim-final">Save simulation result</button><button class="btn btn-primary" data-go="costs">Continue to Costs &amp; Incentives →</button>`
   };
   document.addEventListener('click', e => {
     if (!e.target.closest('#sim-final')) return;
@@ -134,7 +136,7 @@
 
   /* ================= SCENARIO COMPARISON ================= */
   GX.views['scenario-comparison'] = {
-    name: 'Scenario Comparison', header: { mode: 'step', step: 6, label: 'Scenario Comparison' },
+    name: 'Compare options', header: { mode: 'step', step: 5, label: 'Payback' },
     state: { tab: 'tech', sel: null },
     render(el) { el.innerHTML = `<div class="tabs-outline sc-tabs">${[['global', 'Global View'], ['tech', 'Technical Metrics'], ['fin', 'Financial Forecast']].map(([k, l]) => `<button data-t="${k}" class="${this.state.tab === k ? 'on' : ''}">${l}</button>`).join('')}</div><div id="sc-body"></div>`;
       el.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { this.state.tab = b.dataset.t; el.querySelectorAll('[data-t]').forEach(x => x.classList.toggle('on', x === b)); this.paint(el); U.animateNumbers(el, {}); });
@@ -151,7 +153,7 @@
           ['Seasonal COP', `<span class="${green(isMax(0, x => x.SCOP))}">${U.count(r.SCOP, 'n2')}${mark(isMax(0, x => x.SCOP), 1)}</span>`],
           ['Annual Output', `<span class="${green(isMax(0, x => x.annualOutput))}">${U.count(r.annualOutput, 'n0')} MWh${mark(isMax(0, x => x.annualOutput) && other.some(o => o.r.annualOutput < r.annualOutput - 1), 1)}</span>`],
           ['CAPEX Cost', `<span class="${green(isMin(x => x.capex))}">${U.count(r.capex, 'money')}${mark(isMin(x => x.capex), 0)}</span>`],
-          ['Payback Period', `<span class="${green(isMin(x => x.paybackYears))}">${U.count(r.paybackYears, 'n1')} Years${mark(isMin(x => x.paybackYears), 0)}</span>`],
+          ['Payback Period', `<span class="${green(isMin(x => x.paybackYears))}">${r.paybackYears >= 25 ? 'Over 25' : U.count(r.paybackYears, 'n1')} Years${mark(isMin(x => x.paybackYears), 0)}</span>`],
           ['Risk Rating', `<span style="color:${s.riskLabel === 'Minimal' || s.riskLabel === 'Low' ? 'var(--green)' : s.riskLabel === 'Moderate' ? 'var(--amber)' : 'var(--red)'}">${s.riskLabel}</span>`]];
         if (t === 'fin') return [
           ['Net CAPEX (after incentives)', U.count(r.netCapex, 'money')], ['Annual Savings', `<span class="green">${U.count(r.annualSavings, 'money')}</span>`],
@@ -183,12 +185,12 @@
           <div class="trust"><span>Recommendation confidence</span><b style="font-size:28px">${sc.trust > 93 ? 'High' : sc.trust > 87 ? 'Medium' : 'Low'}</b><span style="text-transform:none;margin-top:4px">score lead ${(best.score - Math.max(...others.map(o => o.score))).toFixed(1)} pts</span></div></div>`;
       el.querySelectorAll('[data-apply]').forEach(b => b.onclick = ev => {
         ev.stopPropagation(); if (!GX.guard()) return; const s = list.find(x => x.id === b.dataset.apply);
-        if (S.cur().locked) { U.toast('System Design is locked. Unlock it to apply a scenario.', 'warn'); return; }
+        if (S.cur().locked) { U.toast('Ground loop design is locked. Unlock it to apply a scenario.', 'warn'); return; }
         S.setDesign({ n: s.design.n, depth: s.design.depth, spacing: s.design.spacing, flow: s.design.flow }); S.log(`Applied scenario: ${s.name}`, 'Config', 'Success');
-        U.toast(`<b>${s.name}</b> applied to System Design`);
+        U.toast(`<b>${s.name}</b> applied to the ground loop design`);
       });
     },
-    foot: () => `<span class="spacer"></span><button class="btn btn-ghost" data-go="simulation-lab">Back to Simulation</button><button class="btn btn-ghost" id="sc-export">Export Comparison Report</button><button class="btn btn-accent" data-go="financial-analysis">Proceed to Financial Analysis</button>`
+    foot: () => `<span class="spacer"></span><button class="btn btn-ghost" data-go="financial-analysis">← Cash flow &amp; payback</button><button class="btn btn-ghost" id="sc-export">Export comparison</button><button class="btn btn-primary" data-go="reports">Create report →</button>`
   };
   document.addEventListener('click', e => {
     if (!e.target.closest('#sc-export')) return;
@@ -199,49 +201,50 @@
 
   /* ================= FINANCIAL ANALYSIS ================= */
   GX.views['financial-analysis'] = {
-    name: 'Financial Analysis', header: { mode: 'title', title: () => GX.shortName() + ' — Financial Intelligence' },
+    name: 'Payback', header: { mode: 'step', step: 5, label: 'Payback' },
     render(el) { el.innerHTML = '<div id="fin"></div>'; this.paint(el); },
     paint(el) {
-      const r = S.result(), st = S.state.settings;
+      const r = S.result(), st = Object.assign({}, S.state.settings, r.inputs.s), bl = r.baseline;
       const noItc = GX.whatIf(null, null, { includeItc: false });
       const itcMonths = Math.max(0, Math.round((noItc.paybackYears - r.paybackYears) * 12));
       let roi100 = null; for (let y = 1; y <= 25; y++) { if (r.cum[y] >= r.netCapex) { const prev = r.cum[y - 1]; roi100 = y - 1 + (r.netCapex - prev) / (r.cum[y] - prev); break; } }
       const viability = r.irr != null && r.irr > 0.12 && r.paybackYears < 8 ? 'High Viability' : r.paybackYears < 12 ? 'Moderate Viability' : 'Low Viability';
       const target = 7.0;
       const W = 760, H = 330, pl = 42, pr = 14, pt = 16, pb = 34;
-      const yrs = [...Array(11).keys()];
+      const T = r.paybackYears <= 8 ? 10 : r.paybackYears < 22 ? Math.ceil((r.paybackYears + 3) / 5) * 5 : 25;
+      const yrs = [...Array(T + 1).keys()];
       const cumSav = yrs.map(y => y === 0 ? 0 : r.cum[y] + r.netCapex);
-      const ymax = Math.max(r.netCapex * 1.15, cumSav[10] * 1.05);
-      const X = U.scale(0, 10, pl, W - pr), Y = U.scale(0, ymax, H - pb, pt);
+      const ymax = Math.max(r.netCapex * 1.15, cumSav[T] * 1.05);
+      const X = U.scale(0, T, pl, W - pr), Y = U.scale(0, ymax, H - pb, pt);
       const pts = yrs.map(y => [X(y), Y(cumSav[y])]);
       const d = U.linePath(pts); const len = Math.round(U.pathLen(d)) + 10;
-      const be = Math.min(10, r.paybackYears);
+      const be = Math.min(T, r.paybackYears);
       const bx = X(be), by = Y(r.netCapex);
-      const areaStart = Math.min(10, be);
+      const areaStart = Math.min(T, be);
       const ap = pts.filter((p, i) => i >= Math.floor(areaStart));
-      const area = `M${bx},${H - pb} L${bx},${by} ` + ap.filter(p => p[0] > bx).map(p => `L${p[0]},${p[1]}`).join(' ') + ` L${X(10)},${H - pb} Z`;
-      const ticks = [0, 2.5, 5, 7.5, 10];
+      const area = `M${bx},${H - pb} L${bx},${by} ` + ap.filter(p => p[0] > bx).map(p => `L${p[0]},${p[1]}`).join(' ') + ` L${X(T)},${H - pb} Z`;
+      const ticks = [0, 0.25, 0.5, 0.75, 1].map(f => +(T * f).toFixed(1));
       const gl = [0.25, 0.5, 0.75, 1].map(f => ymax * f);
       el.querySelector('#fin').innerHTML = `
       <div class="fin-kpis stagger">
         <div class="card kpi-sm"><div class="lbl">Total Investment ${GX.info('capex')}</div><div class="val">${U.count(r.capex, 'money', 'f-cap')}</div><div class="sub" style="color:var(--ink)">CAPEX (Current)</div></div>
-        <div class="card kpi-sm"><div class="lbl">Annual Savings ${GX.info('savings')}</div><div class="val">${U.count(r.annualSavings, 'money', 'f-sav')}</div><div class="sub green">↑ ${(r.annualSavings / r.baselineCost * 100).toFixed(1)}% vs HVAC</div></div>
+        <div class="card kpi-sm"><div class="lbl">Annual Savings ${GX.info('savings')}</div><div class="val">${U.count(r.annualSavings, 'money', 'f-sav')}</div><div class="sub ${r.annualSavings > 0 ? 'green' : 'red'}">${r.annualSavings > 0 ? '↑' : '↓'} ${(r.annualSavings / Math.max(1, r.baselineCost) * 100).toFixed(1)}% vs ${U.esc(bl.short)}</div></div>
         <div class="card kpi-sm"><div class="lbl">Net Profit (10Y)</div><div class="val">${U.count(r.netProfit10, 'money', 'f-np')}</div><div class="sub ${r.netProfit10 > 0 ? 'green' : 'red'}">${r.netProfit10 > 0 ? '↑ High Confidence' : '↓ Below break-even'}</div></div>
-        <div class="card kpi-sm"><div class="lbl">Payback Period ${GX.info('payback')}</div><div class="val">${U.count(r.paybackYears, 'n1', 'f-pb')} Years</div><div class="sub ${r.paybackYears <= target ? 'green' : 'amber'}">Target: ${target.toFixed(1)}y</div></div>
-        <div class="card kpi-sm"><div class="lbl">ROI (10 Years)</div><div class="val">${U.count(r.roi10, 'pct0', 'f-roi')}</div><div class="sub muted">Payback range ${r.paybackLow.toFixed(1)}–${r.paybackHigh.toFixed(1)} y</div></div>
-        <div class="card kpi-sm"><div class="lbl">Tax Credits &amp; Grants</div><div class="val">${U.count(r.incentives, 'money', 'f-inc')}</div><div class="sub" style="color:var(--ink)">Federal + Local</div></div>
+        <div class="card kpi-sm"><div class="lbl">Payback Period ${GX.info('payback')}</div><div class="val">${r.paybackYears >= 25 ? 'Over 25 yrs' : U.count(r.paybackYears, 'n1', 'f-pb') + ' Years'}</div><div class="sub ${r.paybackYears <= target ? 'green' : 'amber'}">${r.paybackYears >= 25 ? 'Savings too small vs. this baseline' : 'Target: ' + target.toFixed(1) + 'y'}</div></div>
+        <div class="card kpi-sm"><div class="lbl">ROI (10 Years)</div><div class="val">${U.count(r.roi10, 'pct0', 'f-roi')}</div><div class="sub muted">${r.paybackYears >= 25 ? 'No payback in 25 years' : `Payback range ${r.paybackLow.toFixed(1)}–${Math.min(25, r.paybackHigh).toFixed(1)} y`}</div></div>
+        <div class="card kpi-sm"><div class="lbl">Tax Credits &amp; Grants</div><div class="val">${U.count(r.incentives, 'money', 'f-inc')}</div><div class="sub" style="color:var(--ink)">${r.avoided > 0 ? '+ ' + U.moneyK(r.avoided) + ' avoided equipment' : 'Federal + state + utility'}</div></div>
       </div>
       <div class="fin-grid">
         <div class="fin-l">
           <div class="card pad fin-chart">
-            <div class="between"><h3 class="card-title">Cumulative ROI Projection (10 Year Lifecycle)</h3><div class="row" style="gap:16px;font-size:12px"><span class="row" style="gap:6px;color:var(--red)"><span class="dot" style="background:var(--red)"></span>Net Investment</span><span class="row" style="gap:6px;color:var(--teal-500)"><span class="dot" style="background:var(--teal-500)"></span>Cumulative Savings</span><button class="link-btn" id="fin-assump">Assumptions</button></div></div>
+            <div class="between"><h3 class="card-title">Cumulative Savings vs. Net Investment (${T} years)</h3><div class="row" style="gap:16px;font-size:12px"><span class="row" style="gap:6px;color:var(--red)"><span class="dot" style="background:var(--red)"></span>Net Investment</span><span class="row" style="gap:6px;color:var(--teal-500)"><span class="dot" style="background:var(--teal-500)"></span>Cumulative Savings</span><button class="link-btn" id="fin-assump">Assumptions</button></div></div>
             <svg viewBox="0 0 ${W} ${H}" class="chart" id="fin-svg" style="margin-top:12px">
               ${gl.map(v => `<line x1="${pl}" x2="${W - pr}" y1="${Y(v)}" y2="${Y(v)}" stroke="#f1f5f9"/><text x="${pl - 8}" y="${Y(v) + 3}" text-anchor="end">${U.moneyK(v)}</text>`).join('')}
               <line x1="${pl}" x2="${pl}" y1="${pt}" y2="${H - pb}" stroke="#e2e8f0"/><line x1="${pl}" x2="${W - pr}" y1="${H - pb}" y2="${H - pb}" stroke="#e2e8f0"/>
-              ${r.paybackYears <= 10 ? `<path d="${area}" fill="#14b8a6" opacity=".07"/>` : ''}
+              ${r.paybackYears <= T ? `<path d="${area}" fill="#14b8a6" opacity=".07"/>` : ''}
               <line x1="${pl}" x2="${W - pr}" y1="${by}" y2="${by}" stroke="#ef4444" stroke-opacity=".55" stroke-width="1"/>
               <path d="${d}" fill="none" stroke="#14b8a6" stroke-width="3" stroke-linejoin="round" class="line-anim" style="--len:${len}"/>
-              ${r.paybackYears <= 10 ? `<circle cx="${bx}" cy="${by}" r="7" fill="#fff" stroke="#14b8a6" stroke-width="2" class="pop-in"/><circle cx="${bx}" cy="${by}" r="3" fill="#14b8a6"/><text x="${bx - 12}" y="${by - 14}" text-anchor="end" style="fill:#14b8a6;font-weight:700;font-size:12px">BREAK-EVEN: ${r.paybackYears.toFixed(1)}Y</text>` : `<text x="${W - pr}" y="${by - 8}" text-anchor="end" style="fill:#ef4444;font-weight:600">Break-even after year 10 (${r.paybackYears.toFixed(1)}y)</text>`}
+              ${r.paybackYears <= T ? `<circle cx="${bx}" cy="${by}" r="7" fill="#fff" stroke="#14b8a6" stroke-width="2" class="pop-in"/><circle cx="${bx}" cy="${by}" r="3" fill="#14b8a6"/><text x="${bx - 12}" y="${by - 14}" text-anchor="end" style="fill:#14b8a6;font-weight:700;font-size:12px">BREAK-EVEN: ${r.paybackYears.toFixed(1)}Y</text>` : `<text x="${W - pr}" y="${by - 8}" text-anchor="end" style="fill:#ef4444;font-weight:600">${r.paybackYears >= 25 ? "No break-even within 25 years" : `Break-even after year ${T} (${r.paybackYears.toFixed(1)}y)`}</text>`}
               ${ticks.map(tk => `<text x="${X(tk)}" y="${H - 12}" text-anchor="middle">Year ${tk}</text>`).join('')}
             </svg>
           </div>
@@ -254,13 +257,21 @@
         <div class="fin-r">
           <div class="card pad"><h3 class="card-title">Cost Structure</h3><div class="cs">
             <div class="between"><span>Drilling &amp; Loop</span><b>${U.money(r.drilling)}</b></div><div class="between"><span>Heat Pump Units</span><b>${U.money(r.equipment)}</b></div><div class="between"><span>System Integration</span><b>${U.money(r.integration)}</b></div>
-            <div class="between cs-tot"><span>Total CAPEX</span><b>${U.money(r.capex)}</b></div></div></div>
+            <div class="between cs-tot"><span>Total CAPEX</span><b>${U.money(r.capex)}</b></div>
+            <div class="between"><span>Incentives</span><b class="green">${r.incentives > 0 ? '−' + U.money(r.incentives) : '—'}</b></div>${r.avoided > 0 ? `<div class="between"><span>Avoided equipment (${U.esc(bl.short)})</span><b class="green">−${U.money(r.avoided)}</b></div>` : ''}
+            <div class="between cs-tot"><span>Net investment</span><b>${U.money(r.netCapex)}</b></div></div></div>
+          <div class="card pad"><h3 class="card-title">Annual Energy Cost Comparison</h3><div class="cs">
+            <div class="between"><span>Current: ${U.esc(bl.short)}</span><b>${U.money(r.baselineCost)}</b></div>
+            <div class="between"><span>Geothermal heat pump</span><b>${U.money(r.gshpCost)}</b></div>
+            <div class="between"><span>Maintenance difference</span><b class="green">+${U.money(r.maintSave)}</b></div>
+            <div class="between cs-tot"><span>Annual savings</span><b class="${r.annualSavings > 0 ? 'green' : 'red'}">${U.money(r.annualSavings)}</b></div></div>
+            <div class="muted" style="font-size:12px;margin-top:10px">Prices: electricity $${st.elec.toFixed(3)}/kWh${bl.fuel !== 'elec' ? ` · ${bl.fuel === 'gas' ? 'natural gas' : bl.fuel === 'oil' ? 'heating oil' : bl.fuel} $${st[bl.fuel].toFixed(3)}/kWh` : ''} · <a href="#costs">change</a></div></div>
           <div class="card pad"><h3 class="card-title">Financial Insights</h3><div class="fi">
             <div class="insight bar">✦ ${roi100 ? `System achieves 100% ROI in Year ${roi100.toFixed(1)}.` : 'System does not reach 100% ROI within 25 years.'} Post-payback annual cash flow is projected at ${U.money(r.annualSavings)}.</div>
-            <div class="insight bar">✦ Operating energy costs are ${((1 - r.gshpCost / r.baselineCost) * 100).toFixed(0)}% lower than traditional gas/electric HVAC over a 10-year span.</div>
-            <div class="insight bar">✦ ${st.includeItc ? `Federal tax credits cover ${(st.itc * 100).toFixed(0)}% of initial installation costs, reducing break-even by ${itcMonths} months.` : `Enabling the ${(st.itc * 100).toFixed(0)}% federal tax credit would cut break-even by ${Math.max(0, Math.round((r.paybackYears - GX.whatIf(null, null, { includeItc: true }).paybackYears) * 12))} months.`}</div></div></div>
+            <div class="insight bar">✦ ${r.gshpCost < r.baselineCost ? `Operating energy costs are ${((1 - r.gshpCost / r.baselineCost) * 100).toFixed(0)}% lower than the current ${U.esc(bl.short.toLowerCase())}.` : `Energy costs are not lower than the current ${U.esc(bl.short.toLowerCase())} at today's prices — savings come only from maintenance.`}</div>
+            <div class="insight bar">✦ ${!(st.itc > 0) ? `No federal tax credit is applied (${r.sector} project). Check state and utility programs on the Costs &amp; Incentives page.` : st.includeItc ? `Federal tax credits cover ${(st.itc * 100).toFixed(0)}% of initial installation costs, reducing break-even by ${itcMonths} months.` : `Enabling the ${(st.itc * 100).toFixed(0)}% federal tax credit would cut break-even by ${Math.max(0, Math.round((r.paybackYears - GX.whatIf(null, null, { includeItc: true }).paybackYears) * 12))} months.`}</div></div></div>
           <div class="card pad"><h3 class="card-title">Incentives &amp; Credits</h3><div class="inc">
-            ${[['includeItc', `Federal Tax Credit (${(st.itc * 100).toFixed(0)}%)`, r.inputs.s.itc * r.capex], ['includeGrant', 'Energy Efficiency Grant', st.grant], ['includeRebate', 'Local Utility Rebate', st.utilityRebate], ['includeCarbon', 'Carbon Offset Credit', Math.round(r.co2Saved * st.carbonPrice)]].map(([k, l, v]) => `<button class="inc-row ${st[k] ? '' : 'off'}" data-inc="${k}" data-edit title="Click to ${st[k] ? 'exclude' : 'include'}"><span>${l}</span><b>${st[k] ? '+' : ''}${U.money(v)}</b></button>`).join('')}</div></div>
+            ${[['includeItc', `Federal Tax Credit (${(st.itc * 100).toFixed(0)}%)`, r.inputs.s.itc * r.capex], ['includeGrant', 'State incentive', st.grant], ['includeRebate', 'Utility rebate', st.utilityRebate], ['includeCarbon', 'Carbon Offset Credit', Math.round(r.co2Saved * st.carbonPrice)]].map(([k, l, v]) => `<button class="inc-row ${st[k] ? '' : 'off'}" data-inc="${k}" data-edit title="Click to ${st[k] ? 'exclude' : 'include'}"><span>${l}</span><b>${st[k] ? '+' : ''}${U.money(v)}</b></button>`).join('')}</div></div>
         </div>
       </div>`;
       const svg = U.$('#fin-svg', el);
@@ -272,18 +283,5 @@
     }
   };
 
-  GX.assumptions = () => {
-    const s = S.state.settings;
-    const f = (id, l, v, step, suf) => `<div class="field"><label for="${id}">${l}${suf ? ` <span class="muted" style="font-weight:400">(${suf})</span>` : ''}</label><input class="input num" id="${id}" type="number" step="${step}" value="${v}"></div>`;
-    U.modal({ title: 'Financial assumptions', body: `<div class="grid r-2" style="grid-template-columns:1fr 1fr;gap:12px">
-      ${f('as-elec', 'Electricity price', s.elec, 0.01, '$/kWh')}${f('as-gas', 'Natural gas price', s.gas, 0.005, '$/kWh fuel')}
-      ${f('as-esc', 'Energy price escalation', (s.escalation * 100).toFixed(1), 0.1, '%/yr')}${f('as-disc', 'Discount rate', (s.discount * 100).toFixed(1), 0.1, '%')}
-      ${f('as-itc', 'Federal tax credit', (s.itc * 100).toFixed(0), 1, '% of CAPEX')}${f('as-maint', 'Maintenance savings', s.maintSave, 500, '$/yr')}
-      ${f('as-drill', 'Drilling cost multiplier', s.drillMult, 0.05, '× regional rate')}${f('as-eq', 'Heat pump equipment', s.equipRate, 5, '$/kW')}</div>
-      <div class="muted" style="font-size:12.5px">Incentive eligibility and rates change; confirm the current federal and local programs for your project before relying on these values.</div>`,
-      actions: [{ label: 'Reset defaults', kind: 'ghost', onClick: () => { if (!GX.guard()) return false; const D = E.DEFAULT_SETTINGS; S.setSettings({ elec: D.elec, gas: D.gas, escalation: D.escalation, discount: D.discount, itc: D.itc, maintSave: D.maintSave, drillMult: D.drillMult, equipRate: D.equipRate }); U.toast('Assumptions reset'); } },
-        { label: 'Apply', kind: 'primary', onClick: m => { if (!GX.guard()) return false; const g = id => parseFloat(U.$('#' + id, m).value);
-          S.setSettings({ elec: U.clamp(g('as-elec'), 0.01, 1), gas: U.clamp(g('as-gas'), 0.005, 0.5), escalation: U.clamp(g('as-esc') / 100, -0.05, 0.15), discount: U.clamp(g('as-disc') / 100, 0, 0.3), itc: U.clamp(g('as-itc') / 100, 0, 0.6), maintSave: U.clamp(g('as-maint'), 0, 1e6), drillMult: U.clamp(g('as-drill'), 0.3, 3), equipRate: U.clamp(g('as-eq'), 50, 2000) });
-          S.log('Financial assumptions updated', 'Config'); U.toast('Assumptions applied. All modules recalculated.'); } }] });
-  };
+  GX.assumptions = () => GX.go('costs');
 })();

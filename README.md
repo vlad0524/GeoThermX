@@ -1,4 +1,4 @@
-# GeoThermX — Web Platform (v1.3)
+# GeoThermX — Web Platform (v2.1)
 
 Interactive engineering & analytics web app for geothermal (ground-source heat pump) projects,
 built from the GeoThermX UI design (14 screens) and the platform description / business plan.
@@ -6,6 +6,31 @@ built from the GeoThermX UI design (14 screens) and the platform description / b
 ## Run
 Open `index.html` in any modern browser (Chrome, Edge, Safari, Firefox). No build step, no server required.
 Optionally serve the folder: `python3 -m http.server` and open http://localhost:8000.
+
+## What's new in v2.0 — restructured as a feasibility workflow
+Goal: for a building anywhere in the US, show whether a geothermal heat pump system pays off, how big it must be,
+what it costs after incentives and when it pays back against the current heating & cooling system.
+
+**Sidebar (6 steps + operation)**
+1. Site — state, city, ground; state energy prices shown.
+2. Building & Loads — current heating/cooling system (baseline), sector, project type, building data, loads.
+3. Ground Loop — tabs: Design · Borefield & drilling · Long-term simulation · Risks.
+4. Costs & Incentives (new) — energy prices (state defaults, editable), installed cost rates, federal / state / utility incentives, net investment, annual operating cost.
+5. Payback — tabs: Cash flow & payback · Compare options.
+6. Report.
+After installation: Operation (Measured data · Alerts). AI assistant removed from navigation.
+
+**Units (v2.1)** — US units by default (ft, ft², tons, °F, gpm, psi, $/ft, $/ton, Btu/h·ft·°F, °F-degree-days, fuel in gal / therms).
+One switch (sidebar or Settings) converts every page, chart, tooltip, report, checklist and CSV export. Data is stored once in SI, so switching never changes results.
+
+**Engine changes**
+- Energy prices per state and sector (EIA averages, approx. 2024) — residential/commercial electricity and natural gas; propane / heating oil US averages. All editable per project.
+- Baseline system: natural gas, propane, heating oil, electric resistance (+AC) or air-source heat pump (climate-dependent COP).
+- Sector: residential (no federal credit after 2025, 25D ended) / commercial (§48 ITC 30% default, editable).
+- Project type: new construction / end-of-life replacement credit the avoided conventional equipment; early retrofit does not.
+- Realistic installed drilling rates ($50–90/m incl. loop & grout), sector-based heat-pump cost, maintenance savings per kW.
+- Residential cooling load fix; fine peak-load rounding for small buildings; payback beyond 25 years shown as "over 25".
+- Incentives no longer invented: state/utility amounts default to $0 with a link to DSIRE.
 
 ## What's new in v1.3
 - New welcome screen: animated borefield cross-section (fluid flowing in the loops), animated subsurface background (canvas, honours prefers-reduced-motion), live sample KPIs computed by the engine.

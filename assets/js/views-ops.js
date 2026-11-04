@@ -21,15 +21,15 @@
     b.t.push(new Date(Date.now() - (47 - (i == null ? 47 : i)) * 1500)); b.load.push(load); b.cop.push(cop); b.out.push(out);
     if (b.t.length > 48) { b.t.shift(); b.load.shift(); b.cop.shift(); b.out.shift(); }
   }
-  const EVENTS = [['Loop pressure normalized (2.1 bar)', 'Hardware', 'Success'], ['AI Routine: Load Forecast Refresh', 'Intelligence', 'Completed'], ['Heat pump HP-3 stage 2 engaged', 'System', 'Active'], ['Sensor node 412 heartbeat restored', 'Hardware', 'Success'], ['Flow balancing valve B-07 adjusted (-3%)', 'Hardware', 'Active'], ['BMS setpoint sync (22.5°C)', 'System', 'Success']];
+  const EVENTS = [[() => 'Loop pressure normalized (' + U.pres(2.1) + ')', 'Hardware', 'Success'], ['AI Routine: Load Forecast Refresh', 'Intelligence', 'Completed'], ['Heat pump HP-3 stage 2 engaged', 'System', 'Active'], ['Sensor node 412 heartbeat restored', 'Hardware', 'Success'], ['Flow balancing valve B-07 adjusted (-3%)', 'Hardware', 'Active'], [() => 'BMS setpoint sync (' + U.temp(22.5) + ')', 'System', 'Success']];
 
   GX.views.monitoring = {
-    name: 'Monitoring', header: { mode: 'title', title: () => GX.shortName() + (GX.isSample() ? ' — Live Operations' : ' — Operations'), online: true, demo: true },
+    name: 'Operation', header: { mode: 'title', title: () => GX.shortName() + (GX.isSample() ? ' — Live Operations' : ' — Operations'), online: true, demo: true },
     render(el) { el.innerHTML = '<div id="mon"></div>'; this.paint(el); },
     mount(el) {
       if (!GX.isSample()) return;
       this.timer = setInterval(() => { const r = S.result(); pushLive(r); this.paintLive(el, true); }, 1500);
-      this.evTimer = setInterval(() => { const e = EVENTS[Math.floor(Math.random() * EVENTS.length)]; S.log(e[0], e[1], e[2]); this.paintLog(el); }, 9000);
+      this.evTimer = setInterval(() => { const e = EVENTS[Math.floor(Math.random() * EVENTS.length)]; S.log(typeof e[0] === 'function' ? e[0]() : e[0], e[1], e[2]); this.paintLog(el); }, 9000);
     },
     unmount() { clearInterval(this.timer); clearInterval(this.evTimer); },
     paint(el) {
@@ -43,15 +43,15 @@
         <div class="mon-grid">
           <div class="mon-charts">
             <div class="card pad mchart"><div class="between"><span class="mc-t">Live Temperature Profile</span><span class="mc-r teal num" id="mc-temp"></span></div><div class="mc-plot" id="mc-p1"></div></div>
-            <div class="card pad mchart"><div class="between"><span class="mc-t">Load Demand Tracking</span><span class="mc-r num" style="color:var(--ink-3)">Peak Load: ${U.n(S.cur().project.peakLoad)}kW</span></div><div class="mc-plot" id="mc-p2"></div></div>
+            <div class="card pad mchart"><div class="between"><span class="mc-t">Load Demand Tracking</span><span class="mc-r num" style="color:var(--ink-3)">Peak Load: ${U.pow(S.cur().project.peakLoad, 1)}</span></div><div class="mc-plot" id="mc-p2"></div></div>
             <div class="card pad mchart"><div class="between"><span class="mc-t">Real-Time COP Efficiency</span><span class="mc-r teal num">Target: ${(r.SCOP * 0.98).toFixed(2)}</span></div><div class="mc-plot" id="mc-p3"></div></div>
           </div>
           <div class="mon-side">
             <div class="card pad"><h3 class="card-title dark">Active Alerts</h3><div class="ma-list">${alerts.length ? alerts.map(a => `<button class="ma ${a.sev}" data-alert="${a.id}"><b>${esc(a.title)}</b><span>${a.time} — ${esc(a.area)}</span></button>`).join('') : '<div class="empty-ok">No active alerts.</div>'}
               ${alerts.length < 3 ? '<button class="ma ok" data-go="alerts"><b>Scheduled Maintenance Sync</b><span>12:00:00 — Core Pump 1</span></button>' : ''}</div></div>
-            <div class="card pad"><h3 class="card-title teal">AI Insights</h3><div class="fi">
+            <div class="card pad"><h3 class="card-title teal">Insights</h3><div class="fi">
               <div class="insight">✦ ${r.imbalance > 0.2 ? 'Temperature spike detected in the borefield core. Adjusting flow rate to compensate thermal expansion.' : 'Zone temperatures are balanced across all clusters.'}</div>
-              <div class="insight">✦ System is operating in the "${r.SCOP > 4.5 ? 'Ultra-High' : r.SCOP > 3.8 ? 'High' : 'Standard'} Efficiency" range. Estimated energy savings today: <span id="sav-today">${U.money(r.energySavings / 365)}</span>.${S.cur().design.flow > 1 ? ` Trimming flow to 0.95 L/s would add ${U.money((flowOpt.annualSavings - r.annualSavings) / 365)}/day.` : ''}</div></div></div>
+              <div class="insight">✦ System is operating in the "${r.SCOP > 4.5 ? 'Ultra-High' : r.SCOP > 3.8 ? 'High' : 'Standard'} Efficiency" range. Estimated energy savings today: <span id="sav-today">${U.money(r.energySavings / 365)}</span>.${S.cur().design.flow > 1 ? ` Trimming flow to ${U.flow(0.95)} per loop would add ${U.money((flowOpt.annualSavings - r.annualSavings) / 365)}/day.` : ''}</div></div></div>
           </div>
         </div>
         <div class="card pad mon-log"><h3 class="card-title dark">Activity Log</h3><div class="log-table" id="mon-log"></div></div>`;
@@ -65,7 +65,7 @@
       U.$('#mon-kpis', el).innerHTML = `
         <div class="card kpi-sm"><div class="lbl">System Status</div><div class="val" style="color:var(--green)">${r.stability > 0.65 ? 'Optimal' : 'Degraded'}</div></div>
         <div class="card kpi-sm"><div class="lbl">Efficiency (COP)</div><div class="val num">${cop.toFixed(2)} <small class="${chg >= 0 ? 'green' : 'red'}">${chg >= 0 ? '↑' : '↓'} ${Math.abs(chg).toFixed(1)}%</small></div></div>
-        <div class="card kpi-sm"><div class="lbl">Active Load</div><div class="val num">${U.n(load, 0)} <small style="color:var(--muted)">kW</small></div></div>
+        <div class="card kpi-sm"><div class="lbl">Active Load</div><div class="val num">${U.n(U.powV(load), U.imp() ? 1 : 0)} <small style="color:var(--muted)">${U.powU()}</small></div></div>
         <div class="card kpi-sm"><div class="lbl">Ground Temp</div><div class="val num">${U.temp(r.c.tg + (live.tick % 40 === 0 ? 0.1 : 0))} <small style="color:var(--muted);font-size:11px">STABLE</small></div></div>
         <div class="card kpi-sm"><div class="lbl">Uptime</div><div class="val num">${live.uptime.toFixed(2)}%</div></div>`;
       U.$('#mc-temp', el).textContent = `${U.temp(b.out[n - 1])} Out / ${U.temp(r.c.tg)} In`;
@@ -102,26 +102,26 @@
       if (!GX.guard()) return;
       const c = S.cur(), m = c.mitigation;
       U.modal({ title: 'Adjust system settings', body: `
-        <div class="field"><label for="ad-flow">Circulation flow per loop: <b id="ad-flow-v">${c.design.flow.toFixed(2)} L/s</b></label><input type="range" class="range" id="ad-flow" min="0.3" max="1.6" step="0.05" value="${c.design.flow}"></div>
-        <div class="between"><div><b style="font-size:13.5px">Load rebalancing</b><div class="muted" style="font-size:12.5px">Shift demand from the South cluster to redundant loops.</div></div><button class="toggle ${m.rebalance ? 'on' : ''}" id="ad-reb" aria-label="Load rebalancing"></button></div>
-        <div class="between"><div><b style="font-size:13.5px">Off-peak pump trim</b><div class="muted" style="font-size:12.5px">Cap flow at 0.95 L/s outside peak hours.</div></div><button class="toggle ${m.flowOpt ? 'on' : ''}" id="ad-trim" aria-label="Off-peak pump trim"></button></div>
-        <div class="between"><div><b style="font-size:13.5px">Raise return flow temperature +2°C</b><div class="muted" style="font-size:12.5px">Reduces heat rejection stress in cooling season.</div></div><button class="toggle ${m.returnTemp ? 'on' : ''}" id="ad-ret" aria-label="Raise return temperature"></button></div>
+        <div class="field"><label for="ad-flow">Circulation flow per loop: <b id="ad-flow-v">${U.flow(c.design.flow)}</b></label><input type="range" class="range" id="ad-flow" min="0.3" max="1.6" step="0.05" value="${c.design.flow}"></div>
+        <div class="between"><div><b style="font-size:13.5px">Load rebalancing</b><div class="muted" style="font-size:12.5px">Even out seasonal heat flows across the borefield.</div></div><button class="toggle ${m.rebalance ? 'on' : ''}" id="ad-reb" aria-label="Load rebalancing"></button></div>
+        <div class="between"><div><b style="font-size:13.5px">Off-peak pump trim</b><div class="muted" style="font-size:12.5px">Cap flow at ${U.flow(0.95)} per loop outside peak hours.</div></div><button class="toggle ${m.flowOpt ? 'on' : ''}" id="ad-trim" aria-label="Off-peak pump trim"></button></div>
+        <div class="between"><div><b style="font-size:13.5px">Raise return flow temperature +${U.dT(2, 0)}</b><div class="muted" style="font-size:12.5px">Reduces heat rejection stress in cooling season.</div></div><button class="toggle ${m.returnTemp ? 'on' : ''}" id="ad-ret" aria-label="Raise return temperature"></button></div>
         <div class="insight" id="ad-prev"></div>`,
         onMount: (s) => {
           const st = { flow: c.design.flow, reb: m.rebalance, trim: m.flowOpt, ret: !!m.returnTemp };
           const prev = () => { const w = GX.whatIf({ flow: st.flow }, { rebalance: st.reb, flowOpt: st.trim, returnTemp: st.ret ? 2 : 0 }); const r = S.result(); U.$('#ad-prev', s).innerHTML = `Preview: COP <b>${w.SCOP.toFixed(2)}</b> (${U.signed((w.SCOP / r.SCOP - 1) * 100, 1, '%')}) · savings <b>${U.money(w.annualSavings)}</b>/yr · risk <b>${w.risk.score}</b>`; };
-          U.$('#ad-flow', s).oninput = e => { st.flow = +e.target.value; U.$('#ad-flow-v', s).textContent = st.flow.toFixed(2) + ' L/s'; prev(); };
+          U.$('#ad-flow', s).oninput = e => { st.flow = +e.target.value; U.$('#ad-flow-v', s).textContent = U.flow(st.flow); prev(); };
           [['#ad-reb', 'reb'], ['#ad-trim', 'trim'], ['#ad-ret', 'ret']].forEach(([id, k]) => { U.$(id, s).onclick = ev => { st[k] = !st[k]; ev.currentTarget.classList.toggle('on', st[k]); prev(); }; });
           prev(); s._st = st;
         },
-        actions: [{ label: 'Cancel', kind: 'ghost' }, { label: 'Apply to system', kind: 'accent', onClick: s => { const st = s._st; S.setMitigation({ rebalance: st.reb, flowOpt: st.trim, returnTemp: st.ret ? 2 : 0 }); if (st.flow !== c.design.flow) S.setDesign({ flow: st.flow }, 'ops'); S.log(`Operator settings: flow ${st.flow.toFixed(2)} L/s, rebalance ${st.reb ? 'on' : 'off'}, trim ${st.trim ? 'on' : 'off'}`, 'Config', 'Modified'); U.toast('System settings applied'); } }]
+        actions: [{ label: 'Cancel', kind: 'ghost' }, { label: 'Apply to system', kind: 'accent', onClick: s => { const st = s._st; S.setMitigation({ rebalance: st.reb, flowOpt: st.trim, returnTemp: st.ret ? 2 : 0 }); if (st.flow !== c.design.flow) S.setDesign({ flow: st.flow }, 'ops'); S.log(`Operator settings: flow ${U.flow(st.flow)}, rebalance ${st.reb ? 'on' : 'off'}, trim ${st.trim ? 'on' : 'off'}`, 'Config', 'Modified'); U.toast('System settings applied'); } }]
       });
     }
   });
 
   /* ================= ALERTS & ISSUES ================= */
   GX.views.alerts = {
-    name: 'Alerts & Issues', header: { mode: 'title', title: () => GX.shortName() + ' — Alerts Center', demo: true },
+    name: 'Alerts', header: { mode: 'title', title: () => GX.shortName() + ' — Alerts Center', demo: true },
     state: { sel: null, filter: 'all' },
     render(el) { el.innerHTML = '<div id="al"></div>'; this.paint(el); },
     mount(el) { this.clk = setInterval(() => { const x = U.$('#scan-clock'); if (x) x.textContent = U.time(); }, 1000); },
@@ -136,7 +136,7 @@
       const border = a => a.sev === 'critical' ? 'var(--red)' : a.sev === 'warning' ? 'var(--amber)' : 'var(--blue)';
       U.$('#al', el).innerHTML = `
         <div class="al-kpis">
-          ${(GX.isSample() ? [['critical', 'Critical Alerts', cnt.critical, 'red', cnt.critical ? '+1 New' : 'Clear', 'red'], ['warnings', 'Warnings', cnt.warnings, 'amber', 'Stable', 'muted'], ['active', 'Active Issues', cnt.active, '', '↓ -2 Resolved', 'green'], ['resolved', 'Resolved Today', cnt.resolved, 'green', 'Avg. 14m', 'green']] : [['critical', 'Critical', cnt.critical, 'red', '', 'red'], ['warnings', 'Warnings', cnt.warnings, 'amber', '', 'muted'], ['active', 'Open', cnt.active, '', '', 'green'], ['resolved', 'Resolved', cnt.resolved, 'green', '', 'green']]).map(([k, l, v, c, sub, sc]) => `<button class="card kpi-sm al-k ${f === k ? 'on' : ''}" data-f="${k}"><div class="lbl">${l}</div><div class="val num"><span class="${c}" style="font-size:30px">${String(v).padStart(2, '0')}</span> <small class="${sc}" style="font-size:15px">${sub}</small></div></button>`).join('')}
+          ${(GX.isSample() ? [['critical', 'Critical Alerts', cnt.critical, 'red', cnt.critical ? '+1 New' : 'Clear', 'red'], ['warnings', 'Warnings', cnt.warnings, 'amber', 'Stable', 'muted'], ['active', 'Active Issues', cnt.active, '', '↓ -2 Resolved', 'green'], ['resolved', 'Resolved Today', cnt.resolved, 'green', 'Avg. 14 min', 'green']] : [['critical', 'Critical', cnt.critical, 'red', '', 'red'], ['warnings', 'Warnings', cnt.warnings, 'amber', '', 'muted'], ['active', 'Open', cnt.active, '', '', 'green'], ['resolved', 'Resolved', cnt.resolved, 'green', '', 'green']]).map(([k, l, v, c, sub, sc]) => `<button class="card kpi-sm al-k ${f === k ? 'on' : ''}" data-f="${k}"><div class="lbl">${l}</div><div class="val num"><span class="${c}" style="font-size:30px">${String(v).padStart(2, '0')}</span> <small class="${sc}" style="font-size:15px">${sub}</small></div></button>`).join('')}
         </div>
         <div class="al-grid">
           <div class="al-list">${f !== 'all' ? `<div class="between" style="margin-bottom:-4px"><span class="muted" style="font-size:13px">Filtered: ${f} (${shown.length})</span><button class="link-btn" data-f="all">Show all</button></div>` : ''}
@@ -148,7 +148,7 @@
               <div class="grid" style="grid-template-columns:1fr 1fr;gap:16px;margin-top:18px">
                 <div class="mini-box"><div class="v ${sel.impact < 0 ? 'red' : 'green'}">${sel.impact < 0 ? sel.impact : '0.0'}%</div><div class="l up">Efficiency Impact</div></div>
                 <div class="mini-box"><div class="v" style="color:${sel.risk === 'High' ? 'var(--amber)' : sel.risk === 'Medium' ? 'var(--amber)' : 'var(--green)'}">${sel.risk}</div><div class="l up">System Risk</div></div></div>
-              <h3 class="card-title" style="margin-top:26px">AI Root Cause Analysis</h3>
+              <h3 class="card-title" style="margin-top:26px">Root Cause Analysis</h3>
               <div class="insight rc">${esc(sel.cause)}</div>
               <h3 class="card-title" style="margin-top:26px">Recommended Actions</h3>
               <div class="acts">${sel.actions.map((t, i) => `<button class="act ${(sel.done || []).includes(i) ? 'done' : ''}" data-act="${i}"><span class="n">${(sel.done || []).includes(i) ? '✓' : i + 1}</span>${esc(t)}</button>`).join('')}</div>
@@ -170,14 +170,14 @@
 
   /* ================= RISK ENGINE ================= */
   GX.views['risk-engine'] = {
-    name: 'Risk Engine', header: { mode: 'title', title: () => GX.shortName() + ' — Predictive Risk Center' },
+    name: 'Risks', header: { mode: 'title', title: () => GX.shortName() + ' — Predictive Risk Center' },
     render(el) { el.innerHTML = '<div id="rk"></div>'; this.paint(el); },
     model() {
       const r = S.result(), P = r.risk.parts, c = S.cur(), m = c.mitigation;
       const risks = [
-        { name: 'Thermal Overload', prob: U.clamp(28 + P.overload * 45 + P.imbalance * 32, 3, 97), hz: P.overload > 0.5 ? '3-6m' : '9-12m' },
-        { name: 'Subsurface Saturation', prob: U.clamp(10 + P.saturation * 64, 3, 95), hz: Math.max(6, Math.round(14 - P.saturation * 6)) + 'm' },
-        { name: 'Pump Cavitation Trend', prob: U.clamp(P.cavitation * 62, 2, 95), hz: P.cavitation > 0.4 ? '8w' : '6m' },
+        { name: 'Thermal Overload', prob: U.clamp(28 + P.overload * 45 + P.imbalance * 32, 3, 97), hz: P.overload > 0.5 ? '3–6 mo' : '9–12 mo' },
+        { name: 'Subsurface Saturation', prob: U.clamp(10 + P.saturation * 64, 3, 95), hz: Math.max(6, Math.round(14 - P.saturation * 6)) + ' mo' },
+        { name: 'Pump Cavitation Trend', prob: U.clamp(P.cavitation * 62, 2, 95), hz: P.cavitation > 0.4 ? '8 wk' : '6 mo' },
         { name: 'Freeze Protection', prob: U.clamp(P.freeze * 80, 1, 95), hz: 'Winter' },
         { name: 'Drilling Deviation', prob: U.clamp(P.drilling * 70, 1, 95), hz: 'Drilling' }
       ].sort((a, b) => b.prob - a.prob).slice(0, 3);
@@ -203,8 +203,8 @@
         ['Full Saturation', '12 Months', `System COP drops to ${k.cop12.toFixed(1)}. ${k.P.saturation > 0.4 ? 'Permanent heat plume detected.' : 'Recovery possible with rebalancing.'}`, false]];
       const actions = [];
       if (k.P.imbalance > 0.3) actions.push('Rebalance heating/cooling load across the borefield');
-      actions.push('Adjust return flow temp +2°C');
-      if (k.P.cavitation > 0.3) actions.push('Trim pump flow to 0.95 L/s off-peak'); else actions.push('Verify loop flow balance across all boreholes');
+      actions.push('Adjust return flow temp +' + U.dT(2, 0));
+      if (k.P.cavitation > 0.3) actions.push('Trim pump flow to ' + U.flow(0.95) + ' per loop off-peak'); else actions.push('Verify loop flow balance across all boreholes');
       U.$('#rk', el).innerHTML = `
         <div class="card rk-agg">
           <div class="ring"><svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="34" fill="none" stroke="#f1f5f9" stroke-width="7"/><circle cx="40" cy="40" r="34" fill="none" stroke="${col}" stroke-width="7" stroke-linecap="round" stroke-dasharray="${circ}" stroke-dashoffset="${circ * (1 - sc / 100)}" transform="rotate(-90 40 40)" class="ring-arc" style="--c:${circ}"/></svg><b>${U.count(sc, 'n0', 'rk-sc')}</b></div>
@@ -223,7 +223,7 @@
               <div class="card pad"><div class="teal b" style="font-size:13.5px">Projected Impact (Prevented)</div><div class="grid" style="grid-template-columns:1fr 1fr;gap:12px;margin-top:14px">
                 <div class="mini-box"><div class="v red">-${((r.SCOP - k.cop12) / r.SCOP * 100).toFixed(0)}%</div><div class="l up">Eff. Loss</div></div><div class="mini-box"><div class="v red">+${U.moneyK(k.opexSave)}</div><div class="l up">OPEX Save / yr</div></div></div></div>
             </div>
-            <div class="insight" style="margin-top:20px"><b class="teal6">AI Insight:</b> Imbalance is driven by asymmetrical building demand (${cooling ? 'cooling' : 'heating'} ${Math.round(Math.abs(S.cur().project.coolDemand - S.cur().project.heatDemand) / Math.min(S.cur().project.coolDemand, S.cur().project.heatDemand) * 100)}% higher). Increasing borehole spacing in the next design revision will eliminate ${k.riskCut.toFixed(0)}% of current risk.</div>
+            <div class="insight" style="margin-top:20px"><b class="teal6">Insight:</b> Imbalance is driven by asymmetrical building demand (${cooling ? 'cooling' : 'heating'} ${Math.round(Math.abs(S.cur().project.coolDemand - S.cur().project.heatDemand) / Math.min(S.cur().project.coolDemand, S.cur().project.heatDemand) * 100)}% higher). Increasing borehole spacing in the next design revision will eliminate ${k.riskCut.toFixed(0)}% of current risk.</div>
           </div>
         </div>`;
     },
@@ -234,7 +234,7 @@
       if (!GX.guard()) return; const m = S.cur().mitigation; const on = !(m.rebalance && m.returnTemp && m.flowOpt);
       const before = S.result().risk.score;
       S.setMitigation(on ? { rebalance: true, returnTemp: 2, flowOpt: true } : { rebalance: false, returnTemp: 0, flowOpt: false });
-      S.log(on ? 'AI risk mitigation plan applied' : 'AI risk mitigation reverted', 'Intelligence', on ? 'Completed' : 'Modified');
+      S.log(on ? 'Risk mitigation plan applied' : 'Risk mitigation reverted', 'Intelligence', on ? 'Completed' : 'Modified');
       U.toast(on ? `Mitigation applied. Risk ${before} → <b>${S.result().risk.score}</b>` : 'Mitigation reverted');
     }
     if (e.target.closest('#rk-export')) {
@@ -306,7 +306,7 @@
       U.exportData('Benchmark data', `${S.cur().project.ref}-benchmark.csv`, U.csv(rows), 'text/csv');
     }
     if (e.target.closest('#bm-opt')) {
-      if (!GX.guard()) return; if (S.cur().locked) { U.toast('System Design is locked. Unlock it first.', 'warn'); return; }
+      if (!GX.guard()) return; if (S.cur().locked) { U.toast('Ground loop design is locked. Unlock it first.', 'warn'); return; }
       const before = E.benchmark(S.result(), S.cur().project).score; const best = S.scenarios().best;
       S.setDesign({ n: best.design.n, depth: best.design.depth, spacing: best.design.spacing, flow: best.design.flow }); S.setMitigation({ rebalance: true });
       const after = E.benchmark(S.result(), S.cur().project).score; S.log(`Benchmark optimization applied (${best.name})`, 'Intelligence', 'Completed');
@@ -330,21 +330,21 @@
       const loopBad = r.loop != null && r.loop !== '' && (r.loop > ex.ewtc + 6 || r.loop < ex.ewth - 5);
       const st = dev == null ? 'gray' : dev < -20 ? 'red' : dev < -10 || loopBad ? 'amber' : 'green'; return Object.assign({}, r, { cop, ecop, dev, tdev, loopBad, st, i, ethermal: ex.thermal[i] }); }); },
     parse(text) {
-      const rows = [];
+      const rows = []; const isF = /loop_temp_f/i.test(text.split(/\r?\n/)[0] || '');
       text.split(/\r?\n/).forEach(line => { const c = line.split(/[,;\t]/).map(x => x.trim()); if (c.length < 3) return; let m = c[0];
         if (/^\d{4}-\d{1,2}$/.test(m)) m = m.slice(0, 5) + m.slice(5).padStart(2, '0'); else if (/^\d{1,2}\/\d{4}$/.test(m)) { const [mm, yy] = m.split('/'); m = yy + '-' + mm.padStart(2, '0'); } else return;
         const th = parseFloat(c[1]), el = parseFloat(c[2]); if (!(th >= 0) || !(el > 0)) return; const lp = c[3] !== undefined && c[3] !== '' ? parseFloat(c[3]) : null;
-        rows.push({ month: m, thermal: th, elec: el, loop: isFinite(lp) ? lp : null }); });
+        rows.push({ month: m, thermal: th, elec: el, loop: isFinite(lp) && lp !== null ? (isF ? (lp - 32) * 5 / 9 : lp) : null }); });
       return rows;
     },
     merge(newRows) { const map = {}; (S.cur().ops.rows || []).forEach(r => map[r.month] = r); newRows.forEach(r => map[r.month] = r); S.setOps(Object.values(map)); },
-    template() { const ex = O.expected(); const y = new Date().getFullYear() - 1; return 'month,thermal_kwh,electricity_kwh,loop_temp_c\n' + MN.map((m, i) => `${y}-${String(i + 1).padStart(2, '0')},${Math.round(ex.thermal[i])},${Math.round(ex.thermal[i] / ex.cop[i])},`).join('\n'); },
+    template() { const ex = O.expected(); const y = new Date().getFullYear() - 1; return 'month,thermal_kwh,electricity_kwh,' + (U.imp() ? 'loop_temp_f' : 'loop_temp_c') + '\n' + MN.map((m, i) => `${y}-${String(i + 1).padStart(2, '0')},${Math.round(ex.thermal[i])},${Math.round(ex.thermal[i] / ex.cop[i])},`).join('\n'); },
     paint(el) {
       const host = U.$('#mon', el) || el; const rows = O.enrich(); const r = S.result();
       if (!rows.length) {
         host.innerHTML = `<div class="card empty-state" style="max-width:720px"><div class="es-ico">⇪</div><h2>Connect operating data</h2>
           <p class="muted">Upload monthly readings from the building's meters or BMS. GeoThermX compares the measured efficiency with what the design predicts for each month and flags deviations in Alerts.</p>
-          <table class="ex-t" style="text-align:left;margin:6px 0 16px"><tr><td><b>month</b></td><td>YYYY-MM, e.g. 2026-09</td></tr><tr><td><b>thermal_kwh</b></td><td>Heat delivered + heat removed by the heat pumps</td></tr><tr><td><b>electricity_kwh</b></td><td>Electricity used by heat pumps and circulation pumps</td></tr><tr><td><b>loop_temp_c</b></td><td>Optional: average loop return temperature, °C</td></tr></table>
+          <table class="ex-t" style="text-align:left;margin:6px 0 16px"><tr><td><b>month</b></td><td>YYYY-MM, e.g. 2026-09</td></tr><tr><td><b>thermal_kwh</b></td><td>Heat delivered + heat removed by the heat pumps</td></tr><tr><td><b>electricity_kwh</b></td><td>Electricity used by heat pumps and circulation pumps</td></tr><tr><td><b>${U.imp() ? 'loop_temp_f' : 'loop_temp_c'}</b></td><td>Optional: average loop return temperature, ${U.tempU()}C</td></tr></table>
           <div class="row" style="gap:12px;justify-content:center;flex-wrap:wrap"><button class="btn btn-accent" id="op-up2" data-edit>Upload CSV</button><button class="btn btn-ghost" id="op-add2" data-edit>Enter a month manually</button><button class="btn btn-ghost" id="op-tpl2">Download template</button></div></div>`;
         return;
       }
@@ -375,19 +375,19 @@
     },
     addModal() {
       const now = new Date(); now.setMonth(now.getMonth() - 1); const m = now.toISOString().slice(0, 7);
-      U.modal({ title: 'Add monthly reading', body: `<div class="pair"><div class="field"><label for="om-m">Month</label><input class="input" id="om-m" type="month" value="${m}"></div><div class="field"><label for="om-l">Loop return temp (°C, optional)</label><input class="input" id="om-l" type="number" step="0.1"></div></div>
+      U.modal({ title: 'Add monthly reading', body: `<div class="pair"><div class="field"><label for="om-m">Month</label><input class="input" id="om-m" type="month" value="${m}"></div><div class="field"><label for="om-l">Loop return temp (${U.tempU()}, optional)</label><input class="input" id="om-l" type="number" step="0.1"></div></div>
         <div class="pair"><div class="field"><label for="om-t">Thermal energy (kWh)</label><input class="input" id="om-t" type="number" min="0"></div><div class="field"><label for="om-e">Electricity (kWh)</label><input class="input" id="om-e" type="number" min="1"></div></div><div class="muted" style="font-size:12.5px" id="om-err"></div>`,
         actions: [{ label: 'Cancel', kind: 'ghost' }, { label: 'Save reading', kind: 'accent', onClick: md => { const mo = U.$('#om-m', md).value, t = parseFloat(U.$('#om-t', md).value), e = parseFloat(U.$('#om-e', md).value), l = U.$('#om-l', md).value;
           if (!/^\d{4}-\d{2}$/.test(mo) || !(t >= 0) || !(e > 0)) { U.$('#om-err', md).textContent = 'Enter a month, thermal energy and electricity.'; return false; }
-          O.merge([{ month: mo, thermal: t, elec: e, loop: l !== '' ? parseFloat(l) : null }]); S.log('Operating data added for ' + mo, 'System', 'Success'); U.toast('Reading saved'); } }] });
+          O.merge([{ month: mo, thermal: t, elec: e, loop: l !== '' ? U.tempIn(parseFloat(l)) : null }]); S.log('Operating data added for ' + mo, 'System', 'Success'); U.toast('Reading saved'); } }] });
     },
-    upload() { const f = document.createElement('input'); f.type = 'file'; f.accept = '.csv,text/csv'; f.onchange = () => { const file = f.files[0]; if (!file) return; const rd = new FileReader(); rd.onload = () => { const rows = O.parse(String(rd.result)); if (!rows.length) { U.toast('No valid rows. Columns: month (YYYY-MM), thermal_kwh, electricity_kwh, loop_temp_c', 'err'); return; } O.merge(rows); S.log(`Imported ${rows.length} months of operating data`, 'System', 'Success'); U.toast(`Imported <b>${rows.length}</b> month(s) of operating data`); }; rd.readAsText(file); }; f.click(); }
+    upload() { const f = document.createElement('input'); f.type = 'file'; f.accept = '.csv,text/csv'; f.onchange = () => { const file = f.files[0]; if (!file) return; const rd = new FileReader(); rd.onload = () => { const rows = O.parse(String(rd.result)); if (!rows.length) { U.toast('No valid rows. Columns: month (YYYY-MM), thermal_kwh, electricity_kwh, loop_temp_f or loop_temp_c', 'err'); return; } O.merge(rows); S.log(`Imported ${rows.length} months of operating data`, 'System', 'Success'); U.toast(`Imported <b>${rows.length}</b> month(s) of operating data`); }; rd.readAsText(file); }; f.click(); }
   };
   document.addEventListener('click', e => {
     if (e.target.closest('#op-up,#op-up2')) O.upload();
     if (e.target.closest('#op-add,#op-add2')) O.addModal();
     if (e.target.closest('#op-tpl,#op-tpl2')) U.exportData('Operating data template', 'geothermx-operating-data-template.csv', O.template(), 'text/csv');
-    if (e.target.closest('#op-exp')) U.exportData('Operating data', `${S.cur().project.ref}-operating-data.csv`, U.csv([['month', 'thermal_kwh', 'electricity_kwh', 'loop_temp_c', 'measured_cop', 'expected_cop', 'deviation_pct']].concat(O.enrich().map(x => [x.month, x.thermal, x.elec, x.loop == null ? '' : x.loop, x.cop ? x.cop.toFixed(3) : '', x.ecop.toFixed(3), x.dev != null ? x.dev.toFixed(1) : '']))), 'text/csv');
+    if (e.target.closest('#op-exp')) U.exportData('Operating data', `${S.cur().project.ref}-operating-data.csv`, U.csv([['month', 'thermal_kwh', 'electricity_kwh', U.imp() ? 'loop_temp_f' : 'loop_temp_c', 'measured_cop', 'expected_cop', 'deviation_pct']].concat(O.enrich().map(x => [x.month, x.thermal, x.elec, x.loop == null ? '' : +U.tempV(x.loop).toFixed(1), x.cop ? x.cop.toFixed(3) : '', x.ecop.toFixed(3), x.dev != null ? x.dev.toFixed(1) : '']))), 'text/csv');
     const d = e.target.closest('[data-op-del]'); if (d) { S.setOps((S.cur().ops.rows || []).filter(r => r.month !== d.dataset.opDel)); U.toast('Month removed'); }
   });
 })();
